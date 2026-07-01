@@ -55,6 +55,7 @@ services:
       dockerfile: apps/client/Dockerfile
       args:
         VITE_API_URL: http://localhost:2567
+        VITE_SERVER_WS_URL: ws://localhost:2567
     restart: unless-stopped
     ports:
       - '5173:5173'
