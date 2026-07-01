@@ -1,26 +1,25 @@
 // Colyseus room — handles only the multiplayer lifecycle.
 // Game rules live in ../game/tictactoe.ts, not here.
 
-import colyseusLib from "colyseus";
-import type { Client } from "colyseus";
-const { Room } = colyseusLib as typeof import("colyseus");
+import * as colyseus from 'colyseus';
+import type { Client } from 'colyseus';
 
-import type { ClientAction, Player, TicTacToeState } from "@repo/shared";
-import { applyAction, createInitialState } from "../game/tictactoe.js";
-import { saveMatchResult } from "../db/matches.js";
-import { logger } from "../lib/logger.js";
+import type { ClientAction, Player, TicTacToeState } from '@repo/shared';
+import { applyAction, createInitialState } from '../game/tictactoe.js';
+import { saveMatchResult } from '../db/matches.js';
+import { logger } from '../lib/logger.js';
 
-export class TicTacToeRoom extends Room<TicTacToeState> {
+export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
   maxClients = 2;
 
   onCreate() {
     this.setState(createInitialState());
 
-    this.onMessage<ClientAction>("action", (client, action) => {
+    this.onMessage<ClientAction>('action', (client, action) => {
       this.handleAction(client, action);
     });
 
-    logger.info({ roomId: this.roomId }, "TicTacToeRoom created");
+    logger.info({ roomId: this.roomId }, 'TicTacToeRoom created');
   }
 
   onJoin(client: Client) {
@@ -30,17 +29,17 @@ export class TicTacToeRoom extends Room<TicTacToeState> {
       return;
     }
 
-    logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, "Player joined");
+    logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
 
     const bothSeated = this.state.players.X && this.state.players.O;
     if (bothSeated) {
-      this.state.phase = "active";
-      logger.info({ roomId: this.roomId }, "Match started");
+      this.state.phase = 'active';
+      logger.info({ roomId: this.roomId }, 'Match started');
     }
   }
 
   onLeave(client: Client) {
-    logger.info({ roomId: this.roomId, sessionId: client.sessionId }, "Player left");
+    logger.info({ roomId: this.roomId, sessionId: client.sessionId }, 'Player left');
   }
 
   // ---------------------------------------------------------------------------
@@ -50,24 +49,24 @@ export class TicTacToeRoom extends Room<TicTacToeState> {
   private handleAction(client: Client, action: ClientAction) {
     const player = this.getPlayerSymbol(client.sessionId);
     if (!player) {
-      client.send("error", { message: "You are not a player in this match" });
+      client.send('error', { message: 'You are not a player in this match' });
       return;
     }
 
     const result = applyAction(this.state, player, action);
 
     if (!result.ok) {
-      client.send("error", { message: result.error });
+      client.send('error', { message: result.error });
       logger.warn(
         { roomId: this.roomId, player, action, error: result.error },
-        "Rejected action",
+        'Rejected action',
       );
       return;
     }
 
     Object.assign(this.state, result.newState);
 
-    if (this.state.phase === "finished") {
+    if (this.state.phase === 'finished') {
       this.onMatchFinished();
     }
   }
@@ -75,28 +74,28 @@ export class TicTacToeRoom extends Room<TicTacToeState> {
   private assignSlot(sessionId: string): Player | null {
     if (!this.state.players.X) {
       this.state.players.X = sessionId;
-      return "X";
+      return 'X';
     }
     if (!this.state.players.O) {
       this.state.players.O = sessionId;
-      return "O";
+      return 'O';
     }
     return null;
   }
 
   private getPlayerSymbol(sessionId: string): Player | null {
-    if (this.state.players.X === sessionId) return "X";
-    if (this.state.players.O === sessionId) return "O";
+    if (this.state.players.X === sessionId) return 'X';
+    if (this.state.players.O === sessionId) return 'O';
     return null;
   }
 
   private onMatchFinished() {
     logger.info(
       { roomId: this.roomId, winner: this.state.winner },
-      "Match finished",
+      'Match finished',
     );
     saveMatchResult(this.roomId, this.state).catch((err: unknown) => {
-      logger.error({ roomId: this.roomId, err }, "Failed to save match result");
+      logger.error({ roomId: this.roomId, err }, 'Failed to save match result');
     });
   }
 }

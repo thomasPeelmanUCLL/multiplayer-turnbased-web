@@ -14,8 +14,7 @@ import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import colyseusLib from 'colyseus';
-const { Server: ColyseusServer } = colyseusLib as typeof import('colyseus');
+import * as colyseus from 'colyseus';
 
 import { env } from './config/env.js';
 import { pool } from './db/client.js';
@@ -29,27 +28,27 @@ import { rateLimiters } from './middleware/rateLimiters.js';
 const app = express();
 const httpServer = createServer(app);
 
-// ── Security & parsing ────────────────────────────────────────────────────────
+// ── Security & parsing ─────────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '16kb' }));
 
-// ── Health check (no auth required) ──────────────────────────────────────────
+// ── Health check (no auth required) ────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// ── HTTP routes ───────────────────────────────────────────────────────────────
+// ── HTTP routes ───────────────────────────────────────────────────────────────────────────
 app.use('/auth', rateLimiters.auth, authRouter);
 app.use('/matches', matchRouter);
 app.use('/users', userRouter);
 
-// ── Global error handler (must be last Express middleware) ────────────────────
+// ── Global error handler (must be last Express middleware) ────────────────────────────
 app.use(errorHandler);
 
-// ── Colyseus game rooms ───────────────────────────────────────────────────────
-const gameServer = new ColyseusServer({ server: httpServer });
+// ── Colyseus game rooms ───────────────────────────────────────────────────────────────────
+const gameServer = new colyseus.Server({ server: httpServer });
 gameServer.define('tictactoe', TicTacToeRoom);
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────────────
 httpServer.listen(env.PORT, () => {
   console.log(`[server] listening on http://0.0.0.0:${env.PORT}`);
   console.log(`[server] environment: ${env.NODE_ENV}`);
