@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Client as ColyseusClient } from 'colyseus.js';
+import { Client as ColyseusClient, Room } from 'colyseus.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { TicTacToeState, Player } from '@repo/shared';
 
@@ -17,7 +17,7 @@ export function MatchPage() {
   const navigate                              = useNavigate();
   const { userId, username, accessToken }     = useAuth();
 
-  const roomRef = useRef<Awaited<ReturnType<ColyseusClient['joinById']>> | null>(null);
+  const roomRef = useRef<Room<TicTacToeState> | null>(null);
   const [state, setState] = useState<TicTacToeState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
