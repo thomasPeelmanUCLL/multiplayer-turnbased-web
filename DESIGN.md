@@ -348,4 +348,127 @@ services:
 
 ---
 
+## 13. MVP 1 Execution Plan
+
+### 13.1 Goal
+
+MVP 1 is complete when **two authenticated users can create or join a tic-tac-toe match, play a full game in the browser, and persist the result**. This keeps the first version small, testable, and aligned with the existing architecture goals of an authoritative server, shared types, and room-based multiplayer.
+
+### 13.2 In Scope
+
+- Monorepo workspace setup with `apps/client`, `apps/server`, and `packages/shared`.
+- PostgreSQL schema and Drizzle migrations for `users`, `matches`, `match_players`, `turn_events`, and `refresh_tokens`.
+- Authentication endpoints: register, login, refresh, logout, and `GET /users/me`.
+- One Colyseus room type for tic-tac-toe with server-authoritative game rules.
+- One React flow: login/register → lobby → match page.
+- Docker Compose for local development with Postgres, Redis/Valkey, server, and client.
+
+### 13.3 Out of Scope for MVP 1
+
+The following items stay out of MVP 1 to reduce complexity:
+
+- Replay viewer
+- Elo updates
+- Spectator mode
+- Chat
+- Invite links
+- Second game types
+- Advanced reconnect UX
+- Kubernetes deployment manifests
+
+### 13.4 Build Order
+
+1. Create the `pnpm` workspace and shared TypeScript contracts for actions and match state so client and server stay aligned.
+2. Implement the database schema and migrations for the minimum required tables.
+3. Implement auth with short-lived access tokens and refresh flow, then protect user and match endpoints.
+4. Build the tic-tac-toe Colyseus room and validate every move on the server before updating room state.
+5. Add Express endpoints for lobby listing and match creation.
+6. Build the frontend pages for auth, lobby, and gameplay.
+7. Add Docker Compose and verify a full local boot from a clean machine.
+
+### 13.5 Acceptance Criteria
+
+MVP 1 is done when all of the following pass:
+
+- [ ] A new user can register and log in successfully.
+- [ ] An authenticated user can create a tic-tac-toe match.
+- [ ] A second authenticated user can join that match from the lobby.
+- [ ] The server rejects illegal moves and out-of-turn moves.
+- [ ] The match result is stored in PostgreSQL after a win or draw.
+- [ ] A fresh environment boots the full stack with `docker compose up`.
+
+---
+
+## 14. Security Baseline for MVP 1
+
+Security is part of MVP 1, not a later hardening pass.
+
+### 14.1 Threat Model — Trust Boundaries
+
+```
+Browser (untrusted)
+    │  HTTPS / WSS
+    ▼
+Express HTTP API  ←── JWT validation middleware
+    │
+    ├── Colyseus Room Server  ←── session-derived player identity
+    │       │
+    │       └── Redis (Valkey)  ←── room state pub/sub (trusted internal)
+    │
+    └── PostgreSQL  ←── Drizzle parameterized queries only (trusted internal)
+```
+
+The browser is **always untrusted**. Redis and PostgreSQL are internal-only and must never be exposed to the public network.
+
+### 14.2 Risk Register
+
+| Risk | Where | Impact | Mitigation |
+|---|---|---|---|
+| Client-side cheating | Colyseus room | High | Server validates turn ownership + move legality before every state mutation |
+| Broken object authorization | HTTP `/matches/:id`, `/users/:id` | High | Every handler checks authenticated user owns or is allowed to view the resource |
+| Broken authentication / token theft | `/auth/*` | High | Short-lived access tokens (15 min), refresh token rotation, server-side revocation |
+| Brute force login | `/auth/login`, `/auth/register` | Medium | Rate limiting per IP on auth endpoints |
+| WebSocket flood / room spam | Colyseus | Medium | Rate limit room creation; validate all socket messages with schema |
+| Secrets in repo | Repo / CI | High | `.env.example` only; real secrets in environment variables; `.gitignore` enforced |
+| Unvalidated input → injection | All endpoints | High | Zod/Valibot schema validation on every HTTP body and WebSocket message |
+| Misconfigured CORS | Express | Medium | CORS locked to frontend origin; no wildcard in production |
+| Sensitive data in logs | Server | Medium | Never log passwords, tokens, or full payloads; log action types and IDs only |
+
+### 14.3 Required Controls
+
+- **Authoritative server gameplay** — the client sends intent only (`{ type: "place", position: 4 }`); the server decides if it is legal, mutates state, and broadcasts the result.
+- **Zod/Valibot validation** on every HTTP request body and every Colyseus `onMessage` handler before any business logic runs.
+- **bcrypt** for password hashing; never store or log plaintext passwords.
+- **Short-lived access JWTs** (15 min expiry) + **refresh token rotation**: every `/auth/refresh` call issues a new refresh token and immediately invalidates the old one via the `refresh_tokens` table.
+- **Player identity from session** — never read `playerId` from the client message body; always derive it from the verified JWT in the room's `auth` context.
+- **Rate limiting** on `/auth/register`, `/auth/login`, `/auth/refresh`, and room creation.
+- **Helmet** middleware for standard HTTP security headers.
+- **CORS** locked to `FRONTEND_ORIGIN` env var; no wildcards outside local dev.
+- **`.env.example`** committed; `.env` gitignored; secrets documented but never committed.
+- **Parameterized queries only** via Drizzle ORM — no raw string interpolation into SQL.
+
+### 14.4 Security Code Review Checklist
+
+Every PR touching auth, room logic, or persistence must pass these checks before merge:
+
+- [ ] No client-provided identity field is used for authorization decisions.
+- [ ] No game rule is enforced only in the frontend.
+- [ ] No database write happens from unvalidated request or socket input.
+- [ ] No refresh token remains valid after a successful rotation.
+- [ ] No endpoint exposing user or match data skips an ownership/visibility check.
+- [ ] No secret or credential appears in committed code or log output.
+- [ ] No new env var is added without a corresponding entry in `.env.example`.
+
+### 14.5 Audit Logging (MVP 1 minimum)
+
+Log the following events with timestamp, user ID, and outcome (success/failure). Do **not** log raw passwords or token values:
+
+- User registration and login attempts
+- Token refresh and logout
+- Room creation and join attempts
+- Invalid move attempts (who sent what, on which match)
+- Authorization failures on HTTP endpoints
+
+---
+
 *Last updated: 2026-07-01*
