@@ -1,7 +1,9 @@
 // Colyseus room — handles only the multiplayer lifecycle.
 // Game rules live in ../game/tictactoe.ts, not here.
 
-import { Client, Room } from "colyseus";
+import colyseusLib from "colyseus";
+import type { Client } from "colyseus";
+const { Room } = colyseusLib as typeof import("colyseus");
 import type { ClientAction, Player, TicTacToeState } from "@repo/shared";
 import { applyAction, createInitialState } from "../game/tictactoe.js";
 import { saveMatchResult } from "../db/matches.js";

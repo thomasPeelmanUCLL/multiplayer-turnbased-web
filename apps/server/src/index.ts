@@ -14,7 +14,8 @@ import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { Server as ColyseusServer } from 'colyseus';
+import colyseusLib from 'colyseus';
+const { Server: ColyseusServer } = colyseusLib as typeof import('colyseus');
 
 import { env } from './config/env.js';
 import { pool } from './db/client.js';
