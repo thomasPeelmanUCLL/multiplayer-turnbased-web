@@ -17,6 +17,8 @@
             pnpm
             docker-compose
             postgresql_16
+            openssl
+            git
           ];
 
           shellHook = ''
