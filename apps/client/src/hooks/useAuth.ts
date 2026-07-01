@@ -1,60 +1,77 @@
-/**
- * useAuth — in-memory auth state hook.
- *
- * Tokens are stored in module-level variables (not localStorage) because
- * the app may run in sandboxed iframes where storage access is blocked.
- *
- * Access tokens live for ~15 minutes and are silently refreshed when they
- * expire. Refresh tokens are opaque strings sent to /auth/refresh.
- */
-import { useState, useCallback } from 'react';
+// Thin auth hook — stores the access token in memory (not localStorage).
+// Exposes login, register, logout, and the current userId.
 
-type AuthState = {
-  accessToken:  string | null;
-  refreshToken: string | null;
-  userId:       string | null;
-  username:     string | null;
-};
+import { useState } from "react";
 
-// Module-level storage — survives re-renders without triggering them
-let _tokens: AuthState = {
-  accessToken:  null,
-  refreshToken: null,
-  userId:       null,
-  username:     null,
-};
+const API_URL = import.meta.env.VITE_API_URL;
 
-export function useAuth() {
-  const [, rerender] = useState(0);
-
-  const setAuth = useCallback((state: AuthState) => {
-    _tokens = state;
-    rerender((n) => n + 1);
-  }, []);
-
-  const login = useCallback(
-    (accessToken: string, refreshToken: string, userId: string, username: string) => {
-      setAuth({ accessToken, refreshToken, userId, username });
-    },
-    [setAuth],
-  );
-
-  const logout = useCallback(() => {
-    setAuth({ accessToken: null, refreshToken: null, userId: null, username: null });
-  }, [setAuth]);
-
-  return {
-    isLoggedIn:   !!_tokens.accessToken,
-    accessToken:  _tokens.accessToken,
-    refreshToken: _tokens.refreshToken,
-    userId:       _tokens.userId,
-    username:     _tokens.username,
-    login,
-    logout,
-  };
+interface AuthState {
+  userId: string | null;
+  accessToken: string | null;
 }
 
-/** Read the current access token without triggering a React render */
-export function getAccessToken(): string | null {
-  return _tokens.accessToken;
+interface UseAuthReturn extends AuthState {
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
+  logout: () => void;
+  isLoggedIn: boolean;
+}
+
+export function useAuth(): UseAuthReturn {
+  const [auth, setAuth] = useState<AuthState>({
+    userId: null,
+    accessToken: null,
+  });
+
+  async function login(username: string, password: string) {
+    const res = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // receive the refresh token cookie
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error ?? "Login failed");
+    }
+
+    const { userId, accessToken } = await res.json();
+    setAuth({ userId, accessToken });
+  }
+
+  async function register(username: string, password: string) {
+    const res = await fetch(`${API_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error ?? "Registration failed");
+    }
+
+    // Auto-login after successful registration
+    await login(username, password);
+  }
+
+  function logout() {
+    setAuth({ userId: null, accessToken: null });
+    // Fire-and-forget the server-side revocation
+    fetch(`${API_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {
+      // Swallow — local state is already cleared
+    });
+  }
+
+  return {
+    ...auth,
+    isLoggedIn: auth.accessToken !== null,
+    login,
+    register,
+    logout,
+  };
 }

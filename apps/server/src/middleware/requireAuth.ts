@@ -1,43 +1,29 @@
-/**
- * JWT authentication middleware.
- *
- * Verifies the Bearer token from the Authorization header and attaches
- * the authenticated user's ID to res.locals.userId.
- *
- * Usage:
- *   router.get('/me', requireAuth, (req, res) => { ... })
- */
-import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { env } from '../config/env.js';
-import { AppError } from './errorHandler.js';
+// Express middleware — verifies a Bearer access token on protected routes.
+// On success it attaches userId to res.locals so route handlers can use it.
 
-/** Shape of the payload we sign into access tokens */
-export type AccessTokenPayload = {
-  sub: string; // user UUID
-  type: 'access';
-};
+import type { NextFunction, Request, Response } from "express";
+import { verifyAccessToken } from "../auth/tokens";
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const header = req.headers.authorization;
 
-  if (!header?.startsWith('Bearer ')) {
-    return next(new AppError(401, 'Missing or malformed Authorization header'));
+  if (!header?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing or malformed Authorization header" });
+    return;
   }
 
   const token = header.slice(7);
+  const payload = verifyAccessToken(token);
 
-  try {
-    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
-
-    if (payload.type !== 'access') {
-      return next(new AppError(401, 'Invalid token type'));
-    }
-
-    // Attach user ID so downstream handlers never read it from request body
-    res.locals['userId'] = payload.sub;
-    next();
-  } catch {
-    next(new AppError(401, 'Invalid or expired access token'));
+  if (!payload) {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
   }
+
+  res.locals.userId = payload.sub;
+  next();
 }
