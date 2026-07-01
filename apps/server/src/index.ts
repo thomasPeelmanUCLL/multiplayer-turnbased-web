@@ -17,7 +17,7 @@ import helmet from 'helmet';
 import { Server as ColyseusServer } from 'colyseus';
 
 import { env } from './config/env.js';
-import { db } from './db/client.js';
+import { pool } from './db/client.js';
 import { authRouter } from './routes/auth.js';
 import { matchRouter } from './routes/matches.js';
 import { userRouter } from './routes/users.js';
@@ -55,8 +55,11 @@ httpServer.listen(env.PORT, () => {
 });
 
 // Verify DB connection on startup so we fail fast rather than at first query
-db.$client.connect()
-  .then(() => console.log('[db] connected'))
+pool.connect()
+  .then((client) => {
+    console.log('[db] connected');
+    client.release();
+  })
   .catch((err: unknown) => {
     console.error('[db] connection failed', err);
     process.exit(1);

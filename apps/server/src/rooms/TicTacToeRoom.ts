@@ -3,9 +3,9 @@
 
 import { Client, Room } from "colyseus";
 import type { ClientAction, Player, TicTacToeState } from "@repo/shared";
-import { applyAction, createInitialState } from "../game/tictactoe";
-import { saveMatchResult } from "../db/matches";
-import { logger } from "../lib/logger";
+import { applyAction, createInitialState } from "../game/tictactoe.js";
+import { saveMatchResult } from "../db/matches.js";
+import { logger } from "../lib/logger.js";
 
 export class TicTacToeRoom extends Room<TicTacToeState> {
   maxClients = 2;
@@ -23,7 +23,6 @@ export class TicTacToeRoom extends Room<TicTacToeState> {
   onJoin(client: Client) {
     const slot = this.assignSlot(client.sessionId);
     if (!slot) {
-      // Room is full — Colyseus already enforces maxClients, but guard anyway
       client.leave();
       return;
     }
@@ -93,8 +92,7 @@ export class TicTacToeRoom extends Room<TicTacToeState> {
       { roomId: this.roomId, winner: this.state.winner },
       "Match finished",
     );
-    // Fire-and-forget — a failure here is logged but must not crash the room
-    saveMatchResult(this.roomId, this.state).catch((err) => {
+    saveMatchResult(this.roomId, this.state).catch((err: unknown) => {
       logger.error({ roomId: this.roomId, err }, "Failed to save match result");
     });
   }

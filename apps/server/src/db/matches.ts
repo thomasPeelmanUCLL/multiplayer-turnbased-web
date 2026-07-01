@@ -2,8 +2,8 @@
 // Thin layer: translate domain types to SQL — no game logic here.
 
 import type { TicTacToeState } from "@repo/shared";
-import { db } from "./client";
-import { matches } from "./schema";
+import { db } from "./client.js";
+import { matches } from "./schema.js";
 
 /**
  * Persist the final state of a finished match.
@@ -17,9 +17,9 @@ export async function saveMatchResult(
     .insert(matches)
     .values({
       id: roomId,
-      playerX: state.players.X!,
-      playerO: state.players.O!,
-      winner: state.winner,
+      playerX: state.players.X ?? '',
+      playerO: state.players.O ?? '',
+      winner: state.winner ?? null,
       finishedAt: new Date(),
     })
     .onConflictDoNothing(); // idempotent — safe to retry

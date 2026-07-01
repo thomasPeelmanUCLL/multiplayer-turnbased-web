@@ -1,13 +1,11 @@
-// Single shared Drizzle + postgres.js client instance.
+// Single shared Drizzle + pg client instance.
 // Import `db` from here — never create a second pool.
 
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "./schema";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema.js";
 
 const connectionString = process.env.DATABASE_URL!;
 
-// postgres.js manages the connection pool internally
-const sql = postgres(connectionString);
-
-export const db = drizzle(sql, { schema });
+export const pool = new Pool({ connectionString });
+export const db   = drizzle(pool, { schema });

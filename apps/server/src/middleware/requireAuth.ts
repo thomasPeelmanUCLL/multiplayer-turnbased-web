@@ -2,7 +2,8 @@
 // On success it attaches userId to res.locals so route handlers can use it.
 
 import type { NextFunction, Request, Response } from "express";
-import { verifyAccessToken } from "../auth/tokens";
+import { verifyAccessToken } from "../auth/tokens.js";
+export type { AccessTokenPayload } from "../auth/tokens.js";
 
 export function requireAuth(
   req: Request,
@@ -24,6 +25,6 @@ export function requireAuth(
     return;
   }
 
-  res.locals.userId = payload.sub;
+  res.locals["userId"] = payload.sub;
   next();
 }

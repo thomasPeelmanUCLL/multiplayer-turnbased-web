@@ -1,1 +1,2 @@
-export * from "./tictactoe";
+export * from "./tictactoe.js";
+export * from "./schemas.js";

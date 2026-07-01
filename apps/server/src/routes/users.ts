@@ -4,7 +4,7 @@
  * GET /users/me    — own profile (requires auth)
  * GET /users/:id   — public profile
  */
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { eq } from 'drizzle-orm';
 
 import { db } from '../db/client.js';
@@ -12,18 +12,16 @@ import { users } from '../db/schema.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { AppError } from '../middleware/errorHandler.js';
 
-export const userRouter = Router();
+export const userRouter: ReturnType<typeof Router> = Router();
 
 /** Fields safe to expose publicly */
 const publicFields = {
   id:        users.id,
   username:  users.username,
-  avatarUrl: users.avatarUrl,
-  elo:       users.elo,
   createdAt: users.createdAt,
 };
 
-userRouter.get('/me', requireAuth, async (_req, res, next) => {
+const getMe: RequestHandler = async (_req, res, next) => {
   try {
     const userId = res.locals['userId'] as string;
 
@@ -40,9 +38,9 @@ userRouter.get('/me', requireAuth, async (_req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
 
-userRouter.get('/:id', requireAuth, async (req, res, next) => {
+const getUser: RequestHandler = async (req, res, next) => {
   try {
     const user = await db
       .select(publicFields)
@@ -57,4 +55,7 @@ userRouter.get('/:id', requireAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
+
+userRouter.get('/me', requireAuth, getMe);
+userRouter.get('/:id', requireAuth, getUser);
