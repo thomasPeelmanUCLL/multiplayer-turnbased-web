@@ -1,6 +1,7 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 RUN corepack enable
+ENV CI=true
 
 # Install dependencies
 FROM base AS deps
