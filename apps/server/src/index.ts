@@ -15,6 +15,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import * as colyseus from 'colyseus';
+import { WebSocketTransport } from '@colyseus/ws-transport';
 
 import { env } from './config/env.js';
 import { pool } from './db/client.js';
@@ -45,7 +46,9 @@ app.use('/users', userRouter);
 app.use(errorHandler);
 
 // ── Colyseus game rooms ───────────────────────────────────────────────────────────────────
-const gameServer = new colyseus.Server({ server: httpServer });
+const gameServer = new colyseus.Server({
+  transport: new WebSocketTransport({ server: httpServer }),
+});
 gameServer.define('tictactoe', TicTacToeRoom);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────────────
