@@ -2,18 +2,20 @@ FROM node:22-alpine AS base
 WORKDIR /app
 RUN corepack enable
 
+# Install dependencies
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/client/package.json ./apps/client/
 COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --frozen-lockfile
 
+# Build
 FROM deps AS build
 COPY . .
 RUN pnpm --filter @repo/shared build
 RUN pnpm --filter @repo/client build
 
-# Serve with a minimal static file server
+# Runtime — serve the built static files
 FROM node:22-alpine AS runtime
 WORKDIR /app
 RUN npm install -g serve
