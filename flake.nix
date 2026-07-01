@@ -14,10 +14,9 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             nodejs_22
-            nodePackages.pnpm
+            pnpm
             docker-compose
-            # optional but useful
-            postgresql_16  # gives you psql CLI for debugging
+            postgresql_16
           ];
 
           shellHook = ''
