@@ -12,6 +12,9 @@ RUN pnpm install --frozen-lockfile
 
 # Build
 FROM deps AS build
+# VITE_API_URL is inlined by Vite at build time via import.meta.env
+ARG VITE_API_URL=http://localhost:2567
+ENV VITE_API_URL=$VITE_API_URL
 COPY . .
 RUN pnpm --filter @repo/shared build
 RUN pnpm --filter @repo/client build
