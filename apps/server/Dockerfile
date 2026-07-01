@@ -22,7 +22,9 @@ WORKDIR /app
 RUN corepack enable
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/shared/package.json ./packages/shared/
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/package.json ./
 EXPOSE 2567
