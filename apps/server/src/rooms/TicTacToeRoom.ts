@@ -4,6 +4,7 @@
 import colyseusLib from "colyseus";
 import type { Client } from "colyseus";
 const { Room } = colyseusLib as typeof import("colyseus");
+
 import type { ClientAction, Player, TicTacToeState } from "@repo/shared";
 import { applyAction, createInitialState } from "../game/tictactoe.js";
 import { saveMatchResult } from "../db/matches.js";
