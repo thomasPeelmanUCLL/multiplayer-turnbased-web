@@ -1,18 +1,18 @@
 /**
  * Login page.
  *
- * On success, stores auth tokens via useAuth and navigates to /lobby.
+ * Calls useAuth.login directly — no raw fetch here.
+ * On success, navigates to /lobby.
  */
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 export function LoginPage() {
   const navigate  = useNavigate();
   const { login } = useAuth();
 
-  const [email,    setEmail]    = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState<string | null>(null);
   const [loading,  setLoading]  = useState(false);
@@ -23,10 +23,7 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await api.auth.login(email, password);
-      // Decode userId from the JWT header (sub claim)
-      const payload = JSON.parse(atob(res.accessToken.split('.')[1]!)) as { sub: string };
-      login(res.accessToken, res.refreshToken, payload.sub, res.username);
+      await login(username, password);
       navigate('/lobby', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -40,11 +37,11 @@ export function LoginPage() {
       <h1>Sign in</h1>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
         <label>
-          Email
+          Username
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
             style={{ display: 'block', width: '100%', marginTop: 4 }}
           />

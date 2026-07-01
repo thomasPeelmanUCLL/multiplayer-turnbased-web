@@ -1,17 +1,18 @@
 /**
- * Registration page.
+ * Register page.
+ *
+ * Calls useAuth.register directly.
+ * On success, navigates to /lobby.
  */
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 export function RegisterPage() {
-  const navigate  = useNavigate();
-  const { login } = useAuth();
+  const navigate     = useNavigate();
+  const { register } = useAuth();
 
   const [username, setUsername] = useState('');
-  const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState<string | null>(null);
   const [loading,  setLoading]  = useState(false);
@@ -22,9 +23,7 @@ export function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await api.auth.register(username, email, password);
-      const payload = JSON.parse(atob(res.accessToken.split('.')[1]!)) as { sub: string };
-      login(res.accessToken, res.refreshToken, payload.sub, res.username);
+      await register(username, password);
       navigate('/lobby', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -43,16 +42,6 @@ export function RegisterPage() {
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            required
-            style={{ display: 'block', width: '100%', marginTop: 4 }}
-          />
-        </label>
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
             required
             style={{ display: 'block', width: '100%', marginTop: 4 }}
           />

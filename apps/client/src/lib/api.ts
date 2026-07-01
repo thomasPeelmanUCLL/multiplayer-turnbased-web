@@ -1,31 +1,29 @@
 /**
  * Typed API client for all HTTP endpoints.
  *
+ * Accepts an optional accessToken for authenticated requests.
  * Every function throws an Error with a human-readable message on failure.
- * The caller (a React component or hook) decides how to handle it.
  */
-import { getAccessToken } from '../hooks/useAuth.js';
 
-const BASE = '';
+const BASE = import.meta.env.VITE_API_URL ?? '';
 
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  auth = false,
+  accessToken?: string,
 ): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-  if (auth) {
-    const token = getAccessToken();
-    if (!token) throw new Error('Not authenticated');
-    headers['Authorization'] = `Bearer ${token}`;
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
   }
 
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : null,
+    credentials: 'include',
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -43,41 +41,21 @@ async function request<T>(
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export type AuthResponse = {
-  accessToken: string;
-  refreshToken: string;
-  username: string;
-};
-
 export const api = {
-  auth: {
-    register: (username: string, email: string, password: string) =>
-      request<AuthResponse>('POST', '/auth/register', { username, email, password }),
-
-    login: (email: string, password: string) =>
-      request<AuthResponse>('POST', '/auth/login', { email, password }),
-
-    refresh: (refreshToken: string) =>
-      request<Omit<AuthResponse, 'username'>>('POST', '/auth/refresh', { refreshToken }),
-
-    logout: (refreshToken: string) =>
-      request<{ ok: boolean }>('POST', '/auth/logout', { refreshToken }, true),
-  },
-
   matches: {
-    list: () =>
-      request<Match[]>('GET', '/matches', undefined, true),
+    list: (token: string) =>
+      request<Match[]>('GET', '/matches', undefined, token),
 
-    create: (gameType: 'tictactoe') =>
-      request<Match>('POST', '/matches', { gameType }, true),
+    create: (gameType: 'tictactoe', token: string) =>
+      request<Match>('POST', '/matches', { gameType }, token),
 
-    get: (id: string) =>
-      request<Match>('GET', `/matches/${id}`, undefined, true),
+    get: (id: string, token: string) =>
+      request<Match>('GET', `/matches/${id}`, undefined, token),
   },
 
   users: {
-    me: () =>
-      request<User>('GET', '/users/me', undefined, true),
+    me: (token: string) =>
+      request<User>('GET', '/users/me', undefined, token),
   },
 };
 
