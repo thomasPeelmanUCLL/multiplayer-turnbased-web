@@ -48,6 +48,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@colyseus/ws-transport':
+        specifier: ^0.17.13
+        version: 0.17.13(@colyseus/core@0.15.57(@colyseus/schema@2.0.37))(express@4.22.2)
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -236,6 +239,15 @@ packages:
     peerDependencies:
       '@colyseus/core': 0.15.x
       '@colyseus/schema': '>=1.0.0'
+
+  '@colyseus/ws-transport@0.17.13':
+    resolution: {integrity: sha512-5yjNoXKQLTGVAIu5u/x12DsF29cC7y1EIQL1uOS6vBhqymPioFQz++zgmer0W3M2h2iwZuM5rHdpujG/R4IUfg==}
+    peerDependencies:
+      '@colyseus/core': 0.17.x
+      express: ^4.16.0 || ^5.0.0
+    peerDependenciesMeta:
+      express:
+        optional: true
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -970,6 +982,9 @@ packages:
 
   '@types/ws@7.4.7':
     resolution: {integrity: sha512-JQbbmxZTZehdc2iszGKs5oC3NFnjeay7mtAWrdt7qNtAVK0g19muApzAy4bm9byz79xa2ZnO/BOBC2R8RC5Lww==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@vitejs/plugin-react@4.7.0':
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
@@ -2323,6 +2338,17 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@colyseus/ws-transport@0.17.13(@colyseus/core@0.15.57(@colyseus/schema@2.0.37))(express@4.22.2)':
+    dependencies:
+      '@colyseus/core': 0.15.57(@colyseus/schema@2.0.37)
+      '@types/ws': 8.18.1
+      ws: 8.21.0
+    optionalDependencies:
+      express: 4.22.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
 
@@ -2793,6 +2819,10 @@ snapshots:
       '@types/send': 0.17.6
 
   '@types/ws@7.4.7':
+    dependencies:
+      '@types/node': 20.19.43
+
+  '@types/ws@8.18.1':
     dependencies:
       '@types/node': 20.19.43
 
