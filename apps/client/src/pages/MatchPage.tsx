@@ -5,18 +5,16 @@ import { TicTacToeSchema } from '../schema/TicTacToeSchema.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-function snapshot(state: TicTacToeSchema) {
+function snapshot(s: TicTacToeSchema) {
   const board: string[] = [];
-  for (let i = 0; i < 9; i++) board.push(state.board[i] ?? '');
+  for (let i = 0; i < 9; i++) board.push(s.board[i] ?? '');
   return {
     board,
-    phase:         state.phase         ?? 'waiting',
-    currentPlayer: state.currentPlayer ?? 'X',
-    winner:        state.winner        ?? '',
-    players: {
-      X: state.players?.X ?? '',
-      O: state.players?.O ?? '',
-    },
+    phase:         s.phase         ?? 'waiting',
+    currentPlayer: s.currentPlayer ?? 'X',
+    winner:        s.winner        ?? '',
+    playerX:       s.playerX      ?? '',
+    playerO:       s.playerO      ?? '',
   };
 }
 
@@ -44,25 +42,18 @@ export function MatchPage() {
     const client = new ColyseusClient(WS_URL);
     let cancelled = false;
 
-    log(`connecting to ${WS_URL}, matchId=${matchId}`);
-
     function startPolling(room: Room<TicTacToeSchema>) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(() => {
         pollCount.current += 1;
-        const s = room.state;
-        const snap = snapshot(s);
-
+        const snap = snapshot(room.state);
         if (pollCount.current % 5 === 1) {
-          log(`poll#${pollCount.current} phase=${s?.phase} X=${s?.players?.X?.slice(0,6)} O=${s?.players?.O?.slice(0,6)}`);
+          log(`poll#${pollCount.current} phase=${snap.phase} X=${snap.playerX.slice(0,6)} O=${snap.playerO.slice(0,6)}`);
         }
-
         setState(snap);
-
         if (snap.phase === 'finished') {
           clearInterval(pollRef.current!);
           pollRef.current = null;
-          log('poll stopped — game finished');
         }
       }, 100);
     }
@@ -71,14 +62,13 @@ export function MatchPage() {
       if (cancelled) { room.leave(); return; }
       roomRef.current = room;
       setSessionId(room.sessionId);
-
-      log(`joined room=${room.roomId} sessionId=${room.sessionId}`);
-      log(`initial state: phase=${room.state?.phase} X=${room.state?.players?.X} O=${room.state?.players?.O}`);
+      log(`joined room=${room.roomId} me=${room.sessionId}`);
+      log(`initial: phase=${room.state?.phase} X=${room.state?.playerX} O=${room.state?.playerO}`);
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
       room.onStateChange((s) => {
-        log(`onStateChange: phase=${s.phase} X=${s.players?.X?.slice(0,6)} O=${s.players?.O?.slice(0,6)}`);
+        log(`onStateChange phase=${s.phase} X=${s.playerX?.slice(0,6)} O=${s.playerO?.slice(0,6)}`);
         setState(snapshot(s));
       });
       room.onError((code, msg) => { log(`ERROR ${code}: ${msg}`); setError(`${code}: ${msg}`); });
@@ -123,8 +113,8 @@ export function MatchPage() {
     </main>
   );
 
-  const myMark = sessionId === state.players.X ? 'X'
-               : sessionId === state.players.O ? 'O'
+  const myMark = sessionId === state.playerX ? 'X'
+               : sessionId === state.playerO ? 'O'
                : null;
 
   const isMyTurn =
@@ -170,7 +160,6 @@ export function MatchPage() {
       <p style={{ color: '#666', fontSize: 14, marginTop: 20 }}>
         You are playing as <strong>{myMark ?? '…'}</strong>
         {' | '}phase: {state.phase}
-        {' | '}X={state.players.X.slice(0,6)} O={state.players.O.slice(0,6)}
         {' | '}me={sessionId.slice(0,6)}
       </p>
 

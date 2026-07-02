@@ -30,10 +30,7 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
 
     logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
 
-    // Explicitly broadcast so the joining client gets the updated players map
-    this.broadcastPatch();
-
-    const bothSeated = this.state.players.X !== '' && this.state.players.O !== '';
+    const bothSeated = this.state.playerX !== '' && this.state.playerO !== '';
     if (bothSeated) {
       this.lock();
       this.state.phase = 'active';
@@ -58,8 +55,8 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       currentPlayer: this.state.currentPlayer as Player,
       winner: this.state.winner === '' ? null : this.state.winner as any,
       players: {
-        X: this.state.players.X === '' ? null : this.state.players.X,
-        O: this.state.players.O === '' ? null : this.state.players.O,
+        X: this.state.playerX === '' ? null : this.state.playerX,
+        O: this.state.playerO === '' ? null : this.state.playerO,
       },
     };
 
@@ -81,14 +78,14 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
   }
 
   private assignSlot(sessionId: string): Player | null {
-    if (this.state.players.X === '') { this.state.players.X = sessionId; return 'X'; }
-    if (this.state.players.O === '') { this.state.players.O = sessionId; return 'O'; }
+    if (this.state.playerX === '') { this.state.playerX = sessionId; return 'X'; }
+    if (this.state.playerO === '') { this.state.playerO = sessionId; return 'O'; }
     return null;
   }
 
   private getPlayerSymbol(sessionId: string): Player | null {
-    if (this.state.players.X === sessionId) return 'X';
-    if (this.state.players.O === sessionId) return 'O';
+    if (this.state.playerX === sessionId) return 'X';
+    if (this.state.playerO === sessionId) return 'O';
     return null;
   }
 
@@ -99,7 +96,7 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       phase: this.state.phase as any,
       currentPlayer: this.state.currentPlayer as Player,
       winner: this.state.winner === '' ? null : this.state.winner as any,
-      players: { X: this.state.players.X || null, O: this.state.players.O || null },
+      players: { X: this.state.playerX || null, O: this.state.playerO || null },
     };
     saveMatchResult(this.roomId, plainState).catch((err: unknown) => {
       logger.error({ roomId: this.roomId, err }, 'Failed to save match result');
