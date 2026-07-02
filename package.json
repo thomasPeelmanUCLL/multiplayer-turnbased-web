@@ -9,5 +9,10 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@colyseus/uwebsockets-transport": "npm:@colyseus/ws-transport@^0.16.5"
+    }
   }
 }
