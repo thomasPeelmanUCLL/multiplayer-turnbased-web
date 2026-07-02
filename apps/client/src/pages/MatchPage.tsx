@@ -46,6 +46,21 @@ export function MatchPage() {
     const client = new ColyseusClient(WS_URL);
     let cancelled = false;
 
+    function startPolling(room: Room<MatchState>) {
+      // Poll room.state (a live mutable Schema object) every 100 ms.
+      // We stop only when the game is finished so we never miss a
+      // phase transition that onStateChange might drop.
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(() => {
+        const snap = snapshot(room);
+        setState(snap);
+        if (snap.phase === 'finished') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
+      }, 100);
+    }
+
     function attachHandlers(room: Room<MatchState>) {
       if (cancelled) { room.leave(); return; }
       roomRef.current = room;
@@ -53,21 +68,12 @@ export function MatchPage() {
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      // Keep state live on every subsequent patch
+      // onStateChange as belt-and-suspenders alongside the poll
       room.onStateChange(() => setState(snapshot(room)));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
 
-      // Poll until players.X is set (server assigns slot in onJoin,
-      // which arrives as the initial full-state frame before onStateChange fires)
-      pollRef.current = setInterval(() => {
-        const snap = snapshot(room);
-        setState(snap);
-        if (snap.players.X !== '') {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-        }
-      }, 100);
+      startPolling(room);
     }
 
     const promise = matchId === 'new'
