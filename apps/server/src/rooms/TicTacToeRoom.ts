@@ -37,7 +37,6 @@ export class TicTacToeRoom extends BaseRoom {
       return;
     }
 
-    // Validate the payload with Zod before touching game logic
     const parsed = ClientActionSchema.safeParse(action);
     if (!parsed.success) {
       this.sendError(client, `Invalid action: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
