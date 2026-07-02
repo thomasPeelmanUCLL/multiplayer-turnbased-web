@@ -8,6 +8,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@colyseus/schema": "^4.0.27",
     "@colyseus/ws-transport": "^0.15.3",
     "@repo/shared": "workspace:*",
     "bcrypt": "^5.1.1",
