@@ -58,6 +58,10 @@ docker compose -f infra/docker-compose.yml up
 docker compose -f infra/docker-compose.yml build --no-cache server
 docker compose -f infra/docker-compose.yml up -d server
 
+# Rebuild only the client after code changes
+docker compose -f infra/docker-compose.yml build --no-cache client
+docker compose -f infra/docker-compose.yml up -d client
+
 # Wipe postgres data and start fresh
 docker compose -f infra/docker-compose.yml down -v
 ```
@@ -166,9 +170,31 @@ logger.warn({ action, error }, 'Rejected action');
 logger.error({ err }, 'Unhandled error');
 ```
 
+### Colyseus room identity
+
+Use `room.roomId` (not `room.id`) to reference a room's ID — `room.id` was removed in Colyseus 0.15. This applies on both the server (`this.roomId` inside a Room class) and the client (`room.roomId` on the object returned by `client.joinOrCreate()`).
+
 ### Dependencies
 
 All runtime dependencies must be in `apps/server/package.json` **and** reflected in `pnpm-lock.yaml`. Current runtime deps: `colyseus`, `@colyseus/schema`, `@colyseus/ws-transport`, `express`, `cors`, `helmet`, `express-rate-limit`, `drizzle-orm`, `pg`, `bcrypt`, `jsonwebtoken`, `zod`, `pino`, `pino-pretty`.
+
+---
+
+## `apps/client` — React + Vite
+
+### Stack versions
+
+| Package | Version |
+|---|---|
+| React | 19 |
+| react-dom | 19 |
+| react-router-dom | 7 |
+| Vite | 6 |
+| @vitejs/plugin-react | 4.x |
+
+### Dev environment note (NixOS / nix develop)
+
+The project uses a flake-based dev shell (`flake.nix`). Always enter it with `nix develop`, **not** `nix-shell` — the latter does not source the flake and will leave `node` missing from PATH, causing pnpm postinstall scripts to fail.
 
 ---
 
