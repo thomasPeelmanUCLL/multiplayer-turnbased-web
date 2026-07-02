@@ -1,5 +1,6 @@
 import type { Client } from 'colyseus';
 import type { TicTacToeState, Player } from '@repo/shared';
+import { ClientActionSchema } from '@repo/shared';
 import { applyAction, createInitialState } from '../game/tictactoe.js';
 import { saveMatchResult } from '../db/matches.js';
 import { logger } from '../lib/logger.js';
@@ -36,15 +37,19 @@ export class TicTacToeRoom extends BaseRoom {
       return;
     }
 
-    const result = applyAction(
-      this.gameState,
-      player,
-      action as Parameters<typeof applyAction>[2],
-    );
+    // Validate the payload with Zod before touching game logic
+    const parsed = ClientActionSchema.safeParse(action);
+    if (!parsed.success) {
+      this.sendError(client, `Invalid action: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
+      logger.warn({ roomId: this.roomId, player, action }, 'Invalid action payload');
+      return;
+    }
+
+    const result = applyAction(this.gameState, player, parsed.data);
 
     if (!result.ok) {
       this.sendError(client, result.error);
-      logger.warn({ roomId: this.roomId, player, action, error: result.error }, 'Rejected action');
+      logger.warn({ roomId: this.roomId, player, action: parsed.data, error: result.error }, 'Rejected action');
       return;
     }
 
