@@ -1,5 +1,8 @@
 /**
  * Match page — tic-tac-toe board.
+ *
+ * Initial state arrives via onStateChange (fired after onJoin on the server
+ * completes and broadcastPatch() runs), so players.X/O are already populated.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -7,23 +10,18 @@ import { Client as ColyseusClient, type Room } from 'colyseus.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-interface Players { X: string; O: string; }
 interface MatchState {
   board: string[];
   phase: string;
   currentPlayer: string;
   winner: string;
-  players: Players;
+  players: { X: string; O: string };
 }
 
 function snapshot(room: Room<MatchState>): MatchState {
   const s = room.state as any;
-  // board may be an ArraySchema, MapSchema, or plain array
   const board: string[] = [];
-  for (let i = 0; i < 9; i++) {
-    const cell = s.board?.[i];
-    board.push(cell == null ? '' : String(cell));
-  }
+  for (let i = 0; i < 9; i++) board.push(s.board?.[i] == null ? '' : String(s.board[i]));
   return {
     board,
     phase:         String(s.phase         ?? 'waiting'),
@@ -55,15 +53,10 @@ export function MatchPage() {
       roomRef.current = room;
       setSessionId(room.sessionId);
 
-      if (matchId === 'new') {
-        navigate(`/match/${room.roomId}`, { replace: true });
-      }
+      if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      // Log raw state so we can see its actual shape
-      console.log('[MatchPage] sessionId:', room.sessionId);
-      console.log('[MatchPage] raw state:', JSON.parse(JSON.stringify(room.state)));
-
-      setState(snapshot(room));
+      // Wait for first patch (after server onJoin + broadcastPatch)
+      // so players.X / players.O are already set
       room.onStateChange(() => setState(snapshot(room)));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
@@ -73,11 +66,9 @@ export function MatchPage() {
       ? client.joinOrCreate<MatchState>('tictactoe')
       : client.joinById<MatchState>(matchId!);
 
-    promise
-      .then(attachHandlers)
+    promise.then(attachHandlers)
       .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Failed to connect'),
-      );
+        setError(err instanceof Error ? err.message : 'Failed to connect'));
 
     return () => { cancelled = true; roomRef.current?.leave(); roomRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -145,9 +136,6 @@ export function MatchPage() {
 
       <p style={{ color: '#666', fontSize: 14, marginTop: 20 }}>
         You are playing as <strong>{myMark ?? '…'}</strong>
-        {' '}| phase: {state.phase}
-        {' '}| players: X={state.players.X.slice(0,6)} O={state.players.O.slice(0,6)}
-        {' '}| me={sessionId.slice(0,6)}
       </p>
     </main>
   );

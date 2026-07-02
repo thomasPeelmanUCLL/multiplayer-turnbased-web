@@ -1,6 +1,3 @@
-// Colyseus room — handles only the multiplayer lifecycle.
-// Game rules live in ../game/tictactoe.ts, not here.
-
 import * as colyseus from 'colyseus';
 import type { Client } from 'colyseus';
 
@@ -33,6 +30,9 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
 
     logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
 
+    // Explicitly broadcast so the joining client gets the updated players map
+    this.broadcastPatch();
+
     const bothSeated = this.state.players.X !== '' && this.state.players.O !== '';
     if (bothSeated) {
       this.lock();
@@ -45,10 +45,6 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
     logger.info({ roomId: this.roomId, sessionId: client.sessionId }, 'Player left');
   }
 
-  // ---------------------------------------------------------------------------
-  // Private
-  // ---------------------------------------------------------------------------
-
   private handleAction(client: Client, action: ClientAction) {
     const player = this.getPlayerSymbol(client.sessionId);
     if (!player) {
@@ -56,7 +52,6 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       return;
     }
 
-    // Convert Schema state to plain object for pure game logic
     const plainState = {
       board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
       phase: this.state.phase as any,
@@ -76,29 +71,18 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       return;
     }
 
-    // Write result back into Schema
     const s = result.newState;
-    for (let i = 0; i < 9; i++) {
-      this.state.board[i] = s.board[i] ?? '';
-    }
+    for (let i = 0; i < 9; i++) this.state.board[i] = s.board[i] ?? '';
     this.state.phase         = s.phase;
     this.state.currentPlayer = s.currentPlayer;
     this.state.winner        = s.winner ?? '';
 
-    if (this.state.phase === 'finished') {
-      this.onMatchFinished();
-    }
+    if (this.state.phase === 'finished') this.onMatchFinished();
   }
 
   private assignSlot(sessionId: string): Player | null {
-    if (this.state.players.X === '') {
-      this.state.players.X = sessionId;
-      return 'X';
-    }
-    if (this.state.players.O === '') {
-      this.state.players.O = sessionId;
-      return 'O';
-    }
+    if (this.state.players.X === '') { this.state.players.X = sessionId; return 'X'; }
+    if (this.state.players.O === '') { this.state.players.O = sessionId; return 'O'; }
     return null;
   }
 
@@ -110,16 +94,12 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
 
   private onMatchFinished() {
     logger.info({ roomId: this.roomId, winner: this.state.winner }, 'Match finished');
-    // Build a plain state for DB persistence
     const plainState = {
       board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
       phase: this.state.phase as any,
       currentPlayer: this.state.currentPlayer as Player,
       winner: this.state.winner === '' ? null : this.state.winner as any,
-      players: {
-        X: this.state.players.X || null,
-        O: this.state.players.O || null,
-      },
+      players: { X: this.state.players.X || null, O: this.state.players.O || null },
     };
     saveMatchResult(this.roomId, plainState).catch((err: unknown) => {
       logger.error({ roomId: this.roomId, err }, 'Failed to save match result');
