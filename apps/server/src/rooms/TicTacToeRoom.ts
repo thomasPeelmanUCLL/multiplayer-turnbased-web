@@ -15,6 +15,9 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
   onCreate() {
     this.setState(createInitialState());
 
+    // Auto-dispose room if no one joins within 30 s
+    this.autoDispose = true;
+
     this.onMessage<ClientAction>('action', (client, action) => {
       this.handleAction(client, action);
     });
@@ -31,8 +34,11 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
 
     logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
 
+    // Lock the room once both seats are filled so joinOrCreate
+    // never sends a third client here
     const bothSeated = this.state.players.X && this.state.players.O;
     if (bothSeated) {
+      this.lock();
       this.state.phase = 'active';
       logger.info({ roomId: this.roomId }, 'Match started');
     }
