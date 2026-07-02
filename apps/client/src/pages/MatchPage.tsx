@@ -6,32 +6,41 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Client as ColyseusClient, Room } from 'colyseus.js';
-import { useAuth } from '../hooks/useAuth.js';
+import { Client as ColyseusClient, type Room } from 'colyseus.js';
 import type { TicTacToeState, Player } from '@repo/shared';
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:2567';
+// Same env var used in LobbyPage
+const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
 export function MatchPage() {
-  const { matchId }                           = useParams<{ matchId: string }>();
-  const navigate                              = useNavigate();
-  const { userId, username, accessToken }     = useAuth();
+  const { matchId }   = useParams<{ matchId: string }>();
+  const navigate      = useNavigate();
 
-  const roomRef = useRef<Room<TicTacToeState> | null>(null);
-  const [state, setState] = useState<TicTacToeState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const roomRef      = useRef<Room<TicTacToeState> | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  const [state,     setState]     = useState<TicTacToeState | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!matchId || !userId || !username || !accessToken) return;
+    if (!matchId) return;
 
     const client = new ColyseusClient(WS_URL);
 
     client
-      .joinById<TicTacToeState>(matchId, { matchId, userId, username })
+      .joinById<TicTacToeState>(matchId)
       .then((room) => {
-        roomRef.current = room;
-        room.onStateChange((snapshot) => setState({ ...snapshot } as unknown as TicTacToeState));
-        room.onError((code, message) => setError(`Room error ${code}: ${message}`));
+        roomRef.current      = room;
+        sessionIdRef.current = room.sessionId;
+        setSessionId(room.sessionId);
+
+        room.onStateChange((snapshot) =>
+          setState({ ...snapshot } as unknown as TicTacToeState),
+        );
+        room.onError((code, message) =>
+          setError(`Room error ${code}: ${message}`),
+        );
         room.onLeave(() => { roomRef.current = null; });
       })
       .catch((err: unknown) => {
@@ -39,10 +48,10 @@ export function MatchPage() {
       });
 
     return () => { roomRef.current?.leave(); };
-  }, [matchId, userId, username, accessToken]);
+  }, [matchId]);
 
   function place(position: number) {
-    roomRef.current?.send('place', { type: 'place_mark', cell: position });
+    roomRef.current?.send('action', { type: 'place_mark', cell: position });
   }
 
   if (error) {
@@ -54,7 +63,7 @@ export function MatchPage() {
     );
   }
 
-  if (!state) {
+  if (!state || !sessionId) {
     return (
       <main style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
         <p>Connecting…</p>
@@ -62,22 +71,23 @@ export function MatchPage() {
     );
   }
 
+  // The room assigns sessionId as the player identifier
   const myMark: Player | undefined =
-    userId === state.players.X ? 'X' :
-    userId === state.players.O ? 'O' : undefined;
+    sessionId === state.players.X ? 'X' :
+    sessionId === state.players.O ? 'O' : undefined;
 
   const isMyTurn =
     state.phase === 'active' && myMark !== undefined && state.currentPlayer === myMark;
 
   return (
     <main style={{ maxWidth: 480, margin: '40px auto', padding: '0 16px' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Tic-Tac-Toe</h1>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>Tic-Tac-Toe</h1>
         <button onClick={() => navigate('/lobby')}>← Lobby</button>
       </header>
 
-      <p style={{ marginTop: 16 }}>
-        {state.phase === 'waiting'  && 'Waiting for opponent…'}
+      <p style={{ marginTop: 16, fontSize: 18 }}>
+        {state.phase === 'waiting'  && '⏳ Waiting for opponent…'}
         {state.phase === 'active'   && (isMyTurn ? '🟢 Your turn' : '⏳ Opponent\'s turn')}
         {state.phase === 'finished' && (
           state.winner === 'draw'
@@ -86,15 +96,25 @@ export function MatchPage() {
         )}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 24, maxWidth: 300 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 8,
+        marginTop: 24,
+        maxWidth: 300,
+      }}>
         {state.board.map((cell, i) => (
           <button
             key={i}
             disabled={!isMyTurn || cell !== null}
             onClick={() => place(i)}
             style={{
-              height: 90, fontSize: 36, fontWeight: 'bold',
-              background: '#fff', border: '2px solid #ccc', borderRadius: 8,
+              height: 90,
+              fontSize: 40,
+              fontWeight: 'bold',
+              background: '#fff',
+              border: '2px solid #ccc',
+              borderRadius: 8,
               cursor: isMyTurn && cell === null ? 'pointer' : 'default',
             }}
           >
@@ -103,11 +123,9 @@ export function MatchPage() {
         ))}
       </div>
 
-      <section style={{ marginTop: 24 }}>
-        <p style={{ color: '#666', fontSize: 14 }}>
-          You are playing as <strong>{myMark ?? '…'}</strong>
-        </p>
-      </section>
+      <p style={{ color: '#666', fontSize: 14, marginTop: 20 }}>
+        You are playing as <strong>{myMark ?? '…'}</strong>
+      </p>
     </main>
   );
 }
