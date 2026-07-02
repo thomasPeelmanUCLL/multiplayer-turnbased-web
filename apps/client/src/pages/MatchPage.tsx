@@ -1,32 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Client as ColyseusClient, type Room } from 'colyseus.js';
-import { TicTacToeSchema } from '../schema/TicTacToeSchema.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-function snapshot(s: TicTacToeSchema) {
-  const board: string[] = [];
-  for (let i = 0; i < 9; i++) board.push(s.board[i] ?? '');
-  return {
-    board,
-    phase:         s.phase         ?? 'waiting',
-    currentPlayer: s.currentPlayer ?? 'X',
-    winner:        s.winner        ?? '',
-    playerX:       s.playerX      ?? '',
-    playerO:       s.playerO      ?? '',
-  };
+interface MatchState {
+  board: (string | null)[];
+  phase: string;
+  currentPlayer: string;
+  winner: string | null;
+  playerX: string | null;
+  playerO: string | null;
 }
-
-type MatchState = ReturnType<typeof snapshot>;
 
 export function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate    = useNavigate();
 
-  const roomRef   = useRef<Room<TicTacToeSchema> | null>(null);
-  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollCount = useRef(0);
+  const roomRef = useRef<Room | null>(null);
 
   const [state,     setState]     = useState<MatchState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -42,44 +33,27 @@ export function MatchPage() {
     const client = new ColyseusClient(WS_URL);
     let cancelled = false;
 
-    function startPolling(room: Room<TicTacToeSchema>) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(() => {
-        pollCount.current += 1;
-        const snap = snapshot(room.state);
-        if (pollCount.current % 5 === 1) {
-          log(`poll#${pollCount.current} phase=${snap.phase} X=${snap.playerX.slice(0,6)} O=${snap.playerO.slice(0,6)}`);
-        }
-        setState(snap);
-        if (snap.phase === 'finished') {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-        }
-      }, 100);
-    }
-
-    function attachHandlers(room: Room<TicTacToeSchema>) {
+    function attachHandlers(room: Room) {
       if (cancelled) { room.leave(); return; }
       roomRef.current = room;
       setSessionId(room.sessionId);
       log(`joined room=${room.roomId} me=${room.sessionId}`);
-      log(`initial: phase=${room.state?.phase} X=${room.state?.playerX} O=${room.state?.playerO}`);
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      room.onStateChange((s) => {
-        log(`onStateChange phase=${s.phase} X=${s.playerX?.slice(0,6)} O=${s.playerO?.slice(0,6)}`);
-        setState(snapshot(s));
+      // Primary state source: plain JSON broadcast from server
+      room.onMessage('state', (msg: MatchState) => {
+        log(`state msg: phase=${msg.phase} X=${msg.playerX?.slice(0,6)} O=${msg.playerO?.slice(0,6)}`);
+        setState(msg);
       });
+
       room.onError((code, msg) => { log(`ERROR ${code}: ${msg}`); setError(`${code}: ${msg}`); });
       room.onLeave((code) => { log(`onLeave code=${code}`); roomRef.current = null; });
-
-      startPolling(room);
     }
 
     const promise = matchId === 'new'
-      ? client.joinOrCreate<TicTacToeSchema>('tictactoe', {}, TicTacToeSchema)
-      : client.joinById<TicTacToeSchema>(matchId!, {}, TicTacToeSchema);
+      ? client.joinOrCreate('tictactoe')
+      : client.joinById(matchId!);
 
     promise.then(attachHandlers).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -89,7 +63,6 @@ export function MatchPage() {
 
     return () => {
       cancelled = true;
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       roomRef.current?.leave();
       roomRef.current = null;
     };
@@ -144,15 +117,15 @@ export function MatchPage() {
         {state.board.map((cell, i) => (
           <button
             key={i}
-            disabled={!isMyTurn || cell !== ''}
+            disabled={!isMyTurn || !!cell}
             onClick={() => place(i)}
             style={{
               height: 90, fontSize: 40, fontWeight: 'bold',
               background: '#fff', border: '2px solid #ccc', borderRadius: 8,
-              cursor: isMyTurn && cell === '' ? 'pointer' : 'default',
+              cursor: isMyTurn && !cell ? 'pointer' : 'default',
             }}
           >
-            {cell}
+            {cell ?? ''}
           </button>
         ))}
       </div>

@@ -36,10 +36,29 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       this.state.phase = 'active';
       logger.info({ roomId: this.roomId }, 'Match started');
     }
+
+    // Broadcast plain JSON state so all clients get current playerX/playerO
+    this.broadcastState();
   }
 
   onLeave(client: Client) {
     logger.info({ roomId: this.roomId, sessionId: client.sessionId }, 'Player left');
+  }
+
+  private broadcastState() {
+    const msg = this.getStatePlain();
+    this.broadcast('state', msg);
+  }
+
+  private getStatePlain() {
+    return {
+      board: Array.from(this.state.board).map(c => c === '' ? null : c),
+      phase: this.state.phase,
+      currentPlayer: this.state.currentPlayer,
+      winner: this.state.winner === '' ? null : this.state.winner,
+      playerX: this.state.playerX === '' ? null : this.state.playerX,
+      playerO: this.state.playerO === '' ? null : this.state.playerO,
+    };
   }
 
   private handleAction(client: Client, action: ClientAction) {
@@ -49,18 +68,14 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
       return;
     }
 
-    const plainState = {
-      board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
-      phase: this.state.phase as any,
-      currentPlayer: this.state.currentPlayer as Player,
-      winner: this.state.winner === '' ? null : this.state.winner as any,
-      players: {
-        X: this.state.playerX === '' ? null : this.state.playerX,
-        O: this.state.playerO === '' ? null : this.state.playerO,
-      },
-    };
-
-    const result = applyAction(plainState, player, action);
+    const plain = this.getStatePlain();
+    const result = applyAction({
+      board: plain.board as any,
+      phase: plain.phase as any,
+      currentPlayer: plain.currentPlayer as Player,
+      winner: plain.winner as any,
+      players: { X: plain.playerX, O: plain.playerO },
+    }, player, action);
 
     if (!result.ok) {
       client.send('error', { message: result.error });
@@ -73,6 +88,8 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
     this.state.phase         = s.phase;
     this.state.currentPlayer = s.currentPlayer;
     this.state.winner        = s.winner ?? '';
+
+    this.broadcastState();
 
     if (this.state.phase === 'finished') this.onMatchFinished();
   }
@@ -91,14 +108,14 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
 
   private onMatchFinished() {
     logger.info({ roomId: this.roomId, winner: this.state.winner }, 'Match finished');
-    const plainState = {
-      board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
-      phase: this.state.phase as any,
-      currentPlayer: this.state.currentPlayer as Player,
-      winner: this.state.winner === '' ? null : this.state.winner as any,
-      players: { X: this.state.playerX || null, O: this.state.playerO || null },
-    };
-    saveMatchResult(this.roomId, plainState).catch((err: unknown) => {
+    const plain = this.getStatePlain();
+    saveMatchResult(this.roomId, {
+      board: plain.board as any,
+      phase: plain.phase as any,
+      currentPlayer: plain.currentPlayer as Player,
+      winner: plain.winner as any,
+      players: { X: plain.playerX, O: plain.playerO },
+    }).catch((err: unknown) => {
       logger.error({ roomId: this.roomId, err }, 'Failed to save match result');
     });
   }
