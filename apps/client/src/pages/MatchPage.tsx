@@ -17,14 +17,22 @@ interface MatchState {
 }
 
 function snapshot(room: Room<MatchState>): MatchState {
-  // Deep-copy the live Schema so React sees a new reference
-  const s = room.state;
+  const s = room.state as any;
+  // board may be an ArraySchema, MapSchema, or plain array
+  const board: string[] = [];
+  for (let i = 0; i < 9; i++) {
+    const cell = s.board?.[i];
+    board.push(cell == null ? '' : String(cell));
+  }
   return {
-    board: Array.from(s.board as unknown as Iterable<string>),
-    phase: s.phase,
-    currentPlayer: s.currentPlayer,
-    winner: s.winner,
-    players: { X: s.players.X, O: s.players.O },
+    board,
+    phase:         String(s.phase         ?? 'waiting'),
+    currentPlayer: String(s.currentPlayer ?? 'X'),
+    winner:        String(s.winner        ?? ''),
+    players: {
+      X: String(s.players?.X ?? ''),
+      O: String(s.players?.O ?? ''),
+    },
   };
 }
 
@@ -51,10 +59,11 @@ export function MatchPage() {
         navigate(`/match/${room.roomId}`, { replace: true });
       }
 
-      // Seed immediately with whatever state the server sent on join
-      setState(snapshot(room));
+      // Log raw state so we can see its actual shape
+      console.log('[MatchPage] sessionId:', room.sessionId);
+      console.log('[MatchPage] raw state:', JSON.parse(JSON.stringify(room.state)));
 
-      // Then keep in sync with every subsequent patch
+      setState(snapshot(room));
       room.onStateChange(() => setState(snapshot(room)));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
@@ -136,6 +145,9 @@ export function MatchPage() {
 
       <p style={{ color: '#666', fontSize: 14, marginTop: 20 }}>
         You are playing as <strong>{myMark ?? '…'}</strong>
+        {' '}| phase: {state.phase}
+        {' '}| players: X={state.players.X.slice(0,6)} O={state.players.O.slice(0,6)}
+        {' '}| me={sessionId.slice(0,6)}
       </p>
     </main>
   );
