@@ -1,14 +1,8 @@
-/**
- * Lobby page — create or join a Colyseus tictactoe room.
- *
- * After joining, the live Room object is passed via router state so
- * MatchPage can reuse the existing connection instead of re-joining.
- * The room is NOT left on unmount when we're navigating to the match.
- */
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Client } from 'colyseus.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { useRoomContext } from '../context/RoomContext.js';
 import type { TicTacToeState } from '@repo/shared';
 
 const colyseusClient = new Client(
@@ -16,23 +10,20 @@ const colyseusClient = new Client(
 );
 
 export function LobbyPage() {
-  const navigate = useNavigate();
+  const navigate        = useNavigate();
   const { username, logout } = useAuth();
+  const { setRoom }     = useRoomContext();
 
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // When we navigate to the match we hand off the room — don't leave it
-  const handedOffRef = useRef(false);
-
   async function handleFindMatch() {
     setError(null);
     setLoading(true);
-    handedOffRef.current = false;
     try {
       const room = await colyseusClient.joinOrCreate<TicTacToeState>('tictactoe');
-      handedOffRef.current = true;
-      navigate(`/match/${room.roomId}`, { state: { room } });
+      setRoom(room);                          // store in context — survives navigation
+      navigate(`/match/${room.roomId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect to server');
       setLoading(false);

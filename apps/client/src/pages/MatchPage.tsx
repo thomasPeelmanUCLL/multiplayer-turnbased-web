@@ -1,31 +1,27 @@
 /**
  * Match page — tic-tac-toe board.
  *
- * If navigated from LobbyPage the live Room object arrives via router state.
- * If the page is loaded directly (refresh / deep link) it joins by ID instead.
+ * Reads the live Room from RoomContext (set by LobbyPage).
+ * Falls back to joinById for direct URL access / page refresh.
  */
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Client as ColyseusClient, type Room } from 'colyseus.js';
 import type { TicTacToeState, Player } from '@repo/shared';
+import { useRoomContext } from '../context/RoomContext.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
 export function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate    = useNavigate();
-  const location    = useLocation();
+  const { getRoom, setRoom } = useRoomContext();
 
-  const roomRef = useRef<Room<TicTacToeState> | null>(
-    // Reuse the room passed from LobbyPage if available
-    (location.state as { room?: Room<TicTacToeState> } | null)?.room ?? null,
-  );
+  const roomRef = useRef<Room<TicTacToeState> | null>(null);
 
   const [state,     setState]     = useState<TicTacToeState | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(
-    roomRef.current?.sessionId ?? null,
-  );
-  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
 
   useEffect(() => {
     if (!matchId) return;
@@ -37,23 +33,33 @@ export function MatchPage() {
         setState({ ...snapshot } as unknown as TicTacToeState),
       );
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
-      room.onLeave(() => { roomRef.current = null; });
+      room.onLeave(() => {
+        roomRef.current = null;
+        setRoom(null);
+      });
     }
 
-    if (roomRef.current) {
-      // Already have a live room from LobbyPage
-      attachHandlers(roomRef.current);
+    const existing = getRoom();
+    if (existing) {
+      attachHandlers(existing);
     } else {
-      // Deep-link / refresh — join by ID
+      // Deep-link or refresh — rejoin by ID
       new ColyseusClient(WS_URL)
         .joinById<TicTacToeState>(matchId)
-        .then(attachHandlers)
+        .then((room) => {
+          setRoom(room);
+          attachHandlers(room);
+        })
         .catch((err: unknown) =>
           setError(err instanceof Error ? err.message : 'Failed to connect'),
         );
     }
 
-    return () => { roomRef.current?.leave(); };
+    return () => {
+      // Only leave if we're truly unmounting (navigating away from match)
+      roomRef.current?.leave();
+      setRoom(null);
+    };
   }, [matchId]);
 
   function place(position: number) {
