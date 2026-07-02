@@ -39,10 +39,10 @@ gameServer.define('tictactoe', TicTacToeRoom).enableRealtimeListing();
 // gameServer.define('uno',   UnoRoom).enableRealtimeListing();
 
 httpServer.listen(env.PORT, () => {
-  logger.info(`listening on http://0.0.0.0:${env.PORT}`);
-  logger.info(`environment: ${env.NODE_ENV}`);
+  logger.info({ port: env.PORT }, `listening on http://0.0.0.0:${env.PORT}`);
+  logger.info({ env: env.NODE_ENV }, `environment: ${env.NODE_ENV}`);
 });
 
 pool.connect()
-  .then((client) => { logger.info('db connected'); client.release(); })
+  .then((client) => { logger.info({}, 'db connected'); client.release(); })
   .catch((err: unknown) => { logger.error({ err }, 'db connection failed'); process.exit(1); });
