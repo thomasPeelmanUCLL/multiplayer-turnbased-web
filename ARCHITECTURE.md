@@ -37,14 +37,14 @@ The three buildable units are:
 
 ## Infrastructure
 
-Three services are started by `infra/docker-compose.yml`:
+Four services are started by `infra/docker-compose.yml`:
 
 | Service | Image / Source | Port | Notes |
 |---|---|---|---|
 | `postgres` | `postgres:17-alpine` | 5432 | DB = `turnbased`, user/pass = `dev/dev` (dev only). SQL migrations in `infra/migrations/` run automatically on first boot. |
 | `redis` | `valkey/valkey:8-alpine` | 6379 | Used by Colyseus for presence/matchmaking across processes. |
-| `server` | Built from `apps/server/Dockerfile` | 2567 | Waits for both postgres and redis health checks before starting. |
-| `client` | Built from `apps/client/Dockerfile` | 5173 | Build args: `VITE_API_URL`, `VITE_SERVER_WS_URL`. |
+| `server` | Built from `apps/server/Dockerfile` | 2567 | Waits for postgres + redis health checks. Exposes `/healthz`. |
+| `client` | Built from `apps/client/Dockerfile` | 5173 | Waits for `server` to be `healthy` before starting. Build args: `VITE_API_URL`, `VITE_SERVER_WS_URL`. |
 
 Copy `.env.example` to `.env` in the repo root and fill in secrets before first run.
 
@@ -62,9 +62,25 @@ docker compose -f infra/docker-compose.yml up -d server
 docker compose -f infra/docker-compose.yml build --no-cache client
 docker compose -f infra/docker-compose.yml up -d client
 
+# Check server is alive
+curl http://localhost:2567/healthz
+
+# Tail server logs (pino-pretty formatted in dev)
+docker compose -f infra/docker-compose.yml logs server -f
+
 # Wipe postgres data and start fresh
 docker compose -f infra/docker-compose.yml down -v
 ```
+
+### Log level
+
+The server defaults to `debug` in the Docker dev stack. Override by setting `LOG_LEVEL` before starting:
+
+```bash
+LOG_LEVEL=info docker compose -f infra/docker-compose.yml up
+```
+
+Valid values: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.
 
 ---
 
@@ -137,7 +153,7 @@ apps/server/src/
 
 `BaseRoom` is an abstract class that every game room extends. It handles:
 - `onCreate` / `onJoin` / `onLeave` Colyseus lifecycle
-- Routing all `'action'` messages to `handleAction()`
+- Routing all `'action'` messages to `handleAction()` inside a **try/catch** — unhandled errors are logged with the full action payload and a typed error is sent back to the client
 - `broadcastState()` — calls `getStatePlain()` and sends to all clients
 - `sendError(client, message)` — sends a typed error message to one client
 
@@ -170,13 +186,28 @@ logger.warn({ action, error }, 'Rejected action');
 logger.error({ err }, 'Unhandled error');
 ```
 
+Logs are formatted with `pino-pretty` in development (colorized, human-readable). In production (`NODE_ENV=production`) raw JSON is emitted for log aggregators.
+
+### Source maps
+
+The server tsconfig emits `.map` files and `source-map-support` is registered at process start (`import 'source-map-support/register'` at the top of `index.ts`). Stack traces in logs and crash output will show the original TypeScript file and line number, not the compiled JS.
+
+### Health check
+
+`GET /healthz` returns:
+```json
+{ "status": "ok", "uptime": 42, "env": "development" }
+```
+
+Docker polls this every 10 seconds. The client service only starts once the server is `healthy`.
+
 ### Colyseus room identity
 
 Use `room.roomId` (not `room.id`) to reference a room's ID — `room.id` was removed in Colyseus 0.15. This applies on both the server (`this.roomId` inside a Room class) and the client (`room.roomId` on the object returned by `client.joinOrCreate()`).
 
 ### Dependencies
 
-All runtime dependencies must be in `apps/server/package.json` **and** reflected in `pnpm-lock.yaml`. Current runtime deps: `colyseus`, `@colyseus/schema`, `@colyseus/ws-transport`, `express`, `cors`, `helmet`, `express-rate-limit`, `drizzle-orm`, `pg`, `bcrypt`, `jsonwebtoken`, `zod`, `pino`, `pino-pretty`.
+All runtime dependencies must be in `apps/server/package.json` **and** reflected in `pnpm-lock.yaml`. Current runtime deps: `colyseus`, `@colyseus/schema`, `@colyseus/ws-transport`, `express`, `cors`, `helmet`, `express-rate-limit`, `drizzle-orm`, `pg`, `bcrypt`, `jsonwebtoken`, `zod`, `pino`, `pino-pretty`, `source-map-support`.
 
 ---
 
