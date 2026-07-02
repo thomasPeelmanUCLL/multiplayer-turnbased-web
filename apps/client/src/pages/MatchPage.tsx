@@ -1,8 +1,5 @@
 /**
  * Match page — tic-tac-toe board.
- *
- * Initial state arrives via onStateChange (fired after onJoin on the server
- * completes and broadcastPatch() runs), so players.X/O are already populated.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -39,6 +36,7 @@ export function MatchPage() {
   const navigate    = useNavigate();
 
   const roomRef = useRef<Room<MatchState> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [state,     setState]     = useState<MatchState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -55,11 +53,21 @@ export function MatchPage() {
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      // Wait for first patch (after server onJoin + broadcastPatch)
-      // so players.X / players.O are already set
+      // Keep state live on every subsequent patch
       room.onStateChange(() => setState(snapshot(room)));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
+
+      // Poll until players.X is set (server assigns slot in onJoin,
+      // which arrives as the initial full-state frame before onStateChange fires)
+      pollRef.current = setInterval(() => {
+        const snap = snapshot(room);
+        setState(snap);
+        if (snap.players.X !== '') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
+      }, 100);
     }
 
     const promise = matchId === 'new'
@@ -70,7 +78,12 @@ export function MatchPage() {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Failed to connect'));
 
-    return () => { cancelled = true; roomRef.current?.leave(); roomRef.current = null; };
+    return () => {
+      cancelled = true;
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      roomRef.current?.leave();
+      roomRef.current = null;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function place(i: number) {
