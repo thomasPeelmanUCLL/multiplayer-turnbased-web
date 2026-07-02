@@ -26,7 +26,7 @@ export function MatchPage() {
 
   function log(msg: string) {
     console.log('[MatchPage]', msg);
-    setDebugLog(prev => [...prev.slice(-19), msg]);
+    setDebugLog(prev => [...prev.slice(-24), msg]);
   }
 
   useEffect(() => {
@@ -41,10 +41,14 @@ export function MatchPage() {
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      // Primary state source: plain JSON broadcast from server
       room.onMessage('state', (msg: MatchState) => {
-        log(`state msg: phase=${msg.phase} X=${msg.playerX?.slice(0,6)} O=${msg.playerO?.slice(0,6)}`);
+        log(`phase=${msg.phase} turn=${msg.currentPlayer} X=${msg.playerX?.slice(0,6)} O=${msg.playerO?.slice(0,6)}`);
+        log(`board=${JSON.stringify(msg.board)}`);
         setState(msg);
+      });
+
+      room.onMessage('error', (msg: { message: string }) => {
+        log(`server error: ${msg.message}`);
       });
 
       room.onError((code, msg) => { log(`ERROR ${code}: ${msg}`); setError(`${code}: ${msg}`); });
@@ -69,6 +73,7 @@ export function MatchPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function place(i: number) {
+    log(`sending place_mark cell=${i}`);
     roomRef.current?.send('action', { type: 'place_mark', cell: i });
   }
 
@@ -114,25 +119,30 @@ export function MatchPage() {
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
         gap: 8, marginTop: 24, maxWidth: 300,
       }}>
-        {state.board.map((cell, i) => (
-          <button
-            key={i}
-            disabled={!isMyTurn || !!cell}
-            onClick={() => place(i)}
-            style={{
-              height: 90, fontSize: 40, fontWeight: 'bold',
-              background: '#fff', border: '2px solid #ccc', borderRadius: 8,
-              cursor: isMyTurn && !cell ? 'pointer' : 'default',
-            }}
-          >
-            {cell ?? ''}
-          </button>
-        ))}
+        {state.board.map((cell, i) => {
+          const filled = cell !== null && cell !== '';
+          return (
+            <button
+              key={i}
+              disabled={!isMyTurn || filled}
+              onClick={() => place(i)}
+              style={{
+                height: 90, fontSize: 40, fontWeight: 'bold',
+                background: '#fff', border: '2px solid #ccc', borderRadius: 8,
+                cursor: isMyTurn && !filled ? 'pointer' : 'default',
+                color: cell === 'X' ? '#e74c3c' : '#3498db',
+              }}
+            >
+              {cell ?? ''}
+            </button>
+          );
+        })}
       </div>
 
       <p style={{ color: '#666', fontSize: 14, marginTop: 20 }}>
         You are playing as <strong>{myMark ?? '…'}</strong>
         {' | '}phase: {state.phase}
+        {' | '}turn: {state.currentPlayer}
         {' | '}me={sessionId.slice(0,6)}
       </p>
 
@@ -146,7 +156,7 @@ function DebugPanel({ log }: { log: string[] }) {
     <div style={{
       marginTop: 24, padding: 12, background: '#1a1a1a', color: '#0f0',
       fontFamily: 'monospace', fontSize: 11, borderRadius: 6,
-      maxHeight: 220, overflowY: 'auto',
+      maxHeight: 260, overflowY: 'auto',
     }}>
       {log.length === 0
         ? <span style={{ color: '#666' }}>no logs yet</span>
