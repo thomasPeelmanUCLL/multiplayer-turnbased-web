@@ -1,8 +1,5 @@
 /**
  * Match page — tic-tac-toe board.
- *
- * State arrives as a Colyseus Schema patch — board cells are '' for empty,
- * 'X' or 'O' when occupied. Players.X / Players.O hold sessionIds.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -10,13 +7,25 @@ import { Client as ColyseusClient, type Room } from 'colyseus.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-// Mirror of TicTacToeSchema as plain types (what colyseus.js deserialises into)
+interface Players { X: string; O: string; }
 interface MatchState {
-  board: string[];          // '' | 'X' | 'O'
-  phase: string;            // 'waiting' | 'active' | 'finished'
+  board: string[];
+  phase: string;
   currentPlayer: string;
-  winner: string;           // '' | 'X' | 'O' | 'draw'
-  players: { X: string; O: string };
+  winner: string;
+  players: Players;
+}
+
+function snapshot(room: Room<MatchState>): MatchState {
+  // Deep-copy the live Schema so React sees a new reference
+  const s = room.state;
+  return {
+    board: Array.from(s.board as unknown as Iterable<string>),
+    phase: s.phase,
+    currentPlayer: s.currentPlayer,
+    winner: s.winner,
+    players: { X: s.players.X, O: s.players.O },
+  };
 }
 
 export function MatchPage() {
@@ -42,18 +51,24 @@ export function MatchPage() {
         navigate(`/match/${room.roomId}`, { replace: true });
       }
 
-      room.onStateChange((snapshot) => setState({ ...snapshot }));
+      // Seed immediately with whatever state the server sent on join
+      setState(snapshot(room));
+
+      // Then keep in sync with every subsequent patch
+      room.onStateChange(() => setState(snapshot(room)));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
     }
 
-    if (matchId === 'new') {
-      client.joinOrCreate<MatchState>('tictactoe').then(attachHandlers)
-        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to connect'));
-    } else if (matchId) {
-      client.joinById<MatchState>(matchId).then(attachHandlers)
-        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to connect'));
-    }
+    const promise = matchId === 'new'
+      ? client.joinOrCreate<MatchState>('tictactoe')
+      : client.joinById<MatchState>(matchId!);
+
+    promise
+      .then(attachHandlers)
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : 'Failed to connect'),
+      );
 
     return () => { cancelled = true; roomRef.current?.leave(); roomRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -79,7 +94,8 @@ export function MatchPage() {
                : sessionId === state.players.O ? 'O'
                : null;
 
-  const isMyTurn = state.phase === 'active' && myMark !== null && state.currentPlayer === myMark;
+  const isMyTurn =
+    state.phase === 'active' && myMark !== null && state.currentPlayer === myMark;
 
   return (
     <main style={{ maxWidth: 480, margin: '40px auto', padding: '0 16px' }}>
@@ -98,7 +114,10 @@ export function MatchPage() {
         )}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 24, maxWidth: 300 }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 8, marginTop: 24, maxWidth: 300,
+      }}>
         {state.board.map((cell, i) => (
           <button
             key={i}
