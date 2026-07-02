@@ -41,6 +41,8 @@ services:
       dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     env_file: ../.env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
     ports:
       - '2567:2567'
     depends_on:
@@ -48,6 +50,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:2567/healthz || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   client:
     build:
@@ -60,7 +68,8 @@ services:
     ports:
       - '5173:5173'
     depends_on:
-      - server
+      server:
+        condition: service_healthy
 
 volumes:
   postgres-data:

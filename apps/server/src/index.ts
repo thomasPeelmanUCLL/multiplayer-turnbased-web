@@ -1,3 +1,4 @@
+import 'source-map-support/register';
 import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
@@ -22,7 +23,13 @@ app.use(helmet());
 app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '16kb' }));
 
+// Legacy health check kept for backwards compat
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// Structured health check — used by Docker healthcheck and monitoring
+app.get('/healthz', (_req, res) =>
+  res.json({ status: 'ok', uptime: Math.floor(process.uptime()), env: env.NODE_ENV }),
+);
 
 app.use('/auth',    rateLimiters.auth, authRouter);
 app.use('/matches', matchRouter);

@@ -12,7 +12,15 @@ export abstract class BaseRoom extends Room<any> {
   onCreate() {
     this.autoDispose = true;
     this.onMessage<ActionMessage>('action', (client, action) => {
-      this.handleAction(client, action);
+      try {
+        this.handleAction(client, action);
+      } catch (err) {
+        logger.error(
+          { roomId: this.roomId, sessionId: client.sessionId, action, err },
+          'Unhandled error in handleAction',
+        );
+        this.sendError(client, 'Internal server error');
+      }
     });
     logger.info({ roomId: this.roomId, game: this.constructor.name }, 'Room created');
   }
