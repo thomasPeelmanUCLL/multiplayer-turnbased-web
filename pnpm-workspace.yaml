@@ -5,3 +5,5 @@ allowBuilds:
   bcrypt: true
   esbuild: true
   msgpackr-extract: true
+  uWebSockets.js: true
+blockExoticSubdeps: false
