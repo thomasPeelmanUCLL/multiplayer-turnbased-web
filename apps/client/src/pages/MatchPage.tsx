@@ -21,7 +21,7 @@ export function MatchPage() {
   // Once joined, reflect the real roomId in the URL
   useEffect(() => {
     if (room && matchId === 'new') {
-      navigate(`/match/${room.id}`, { replace: true });
+      navigate(`/match/${room.roomId}`, { replace: true });
     }
   }, [room, matchId, navigate]);
 
@@ -86,7 +86,7 @@ export function MatchPage() {
       {state && (
         <p style={{ color: '#666', fontSize: 14, marginTop: 16 }}>
           You: <strong>{myMark ?? '…'}</strong>
-          {' | '}room: {room?.id ?? '…'}
+          {' | '}room: {room?.roomId ?? '…'}
           {' | '}phase: {state.phase}
           {state.phase === 'active' && ` | turn: ${state.currentPlayer}`}
         </p>
