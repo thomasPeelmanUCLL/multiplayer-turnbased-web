@@ -1,11 +1,8 @@
-/**
- * Server entry point.
- */
 import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import * as colyseus from 'colyseus';
+import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 
 import { env } from './config/env.js';
@@ -33,20 +30,13 @@ app.use('/users',   userRouter);
 
 app.use(errorHandler);
 
-const gameServer = new colyseus.Server({
+const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
 });
 
-/**
- * Register game rooms here as you add new games.
- * Each room type gets its own path — the client connects to e.g. /tictactoe.
- *
- * enableRealtimeListing() lets joinOrCreate() find rooms created milliseconds
- * ago, preventing the race where two players each spin up their own room.
- */
 gameServer.define('tictactoe', TicTacToeRoom).enableRealtimeListing();
-// gameServer.define('poker',     PokerRoom).enableRealtimeListing();
-// gameServer.define('uno',       UnoRoom).enableRealtimeListing();
+// gameServer.define('poker', PokerRoom).enableRealtimeListing();
+// gameServer.define('uno',   UnoRoom).enableRealtimeListing();
 
 httpServer.listen(env.PORT, () => {
   logger.info(`listening on http://0.0.0.0:${env.PORT}`);
@@ -54,11 +44,5 @@ httpServer.listen(env.PORT, () => {
 });
 
 pool.connect()
-  .then((client) => {
-    logger.info('db connected');
-    client.release();
-  })
-  .catch((err: unknown) => {
-    logger.error({ err }, 'db connection failed');
-    process.exit(1);
-  });
+  .then((client) => { logger.info('db connected'); client.release(); })
+  .catch((err: unknown) => { logger.error({ err }, 'db connection failed'); process.exit(1); });
