@@ -8,7 +8,8 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN apk add --no-cache python3 make g++
+RUN pnpm install --frozen-lockfile
 
 # Build
 FROM deps AS build
