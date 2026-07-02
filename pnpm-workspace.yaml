@@ -1,8 +1,14 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
 allowBuilds:
   bcrypt: true
   esbuild: true
   msgpackr-extract: true
+  uWebSockets.js: true
+
 blockExoticSubdeps: false
+
+overrides:
+  '@colyseus/core': '^0.16.0'
