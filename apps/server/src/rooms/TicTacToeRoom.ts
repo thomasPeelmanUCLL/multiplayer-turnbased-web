@@ -1,76 +1,41 @@
-import * as colyseus from 'colyseus';
 import type { Client } from 'colyseus';
-
-import type { Board, ClientAction, Player, TicTacToeState } from '@repo/shared';
+import type { TicTacToeState } from '@repo/shared';
 import { applyAction, createInitialState } from '../game/tictactoe.js';
 import { saveMatchResult } from '../db/matches.js';
 import { logger } from '../lib/logger.js';
-import { TicTacToeSchema } from './TicTacToeSchema.js';
+import { BaseRoom, type ActionMessage } from './BaseRoom.js';
 
-export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
+export class TicTacToeRoom extends BaseRoom<ReturnType<TicTacToeRoom['getStatePlain']>> {
   maxClients = 2;
 
-  // Authoritative state as plain JS — avoids ArraySchema mutation bugs
   private gameState: TicTacToeState = createInitialState();
 
-  onCreate() {
-    this.setState(new TicTacToeSchema());
-    this.autoDispose = true;
+  // -------------------------------------------------------------------------
+  // BaseRoom contract
+  // -------------------------------------------------------------------------
 
-    this.onMessage<ClientAction>('action', (client, action) => {
-      this.handleAction(client, action);
-    });
-
-    logger.info({ roomId: this.roomId }, 'TicTacToeRoom created');
-  }
-
-  onJoin(client: Client) {
-    const slot = this.assignSlot(client.sessionId);
-    if (!slot) {
-      client.leave();
-      return;
-    }
-
-    logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
-
-    const bothSeated =
-      this.gameState.players.X !== null && this.gameState.players.O !== null;
-
-    if (bothSeated) {
-      this.lock();
-      this.gameState.phase = 'active';
-      logger.info({ roomId: this.roomId }, 'Match started');
-    }
-
-    this.broadcastState();
-  }
-
-  onLeave(client: Client) {
-    logger.info({ roomId: this.roomId, sessionId: client.sessionId }, 'Player left');
-  }
-
-  private broadcastState() {
-    this.broadcast('state', {
+  protected getStatePlain() {
+    return {
       board:         this.gameState.board,
       phase:         this.gameState.phase,
       currentPlayer: this.gameState.currentPlayer,
       winner:        this.gameState.winner,
       playerX:       this.gameState.players.X,
       playerO:       this.gameState.players.O,
-    });
+    };
   }
 
-  private handleAction(client: Client, action: ClientAction) {
-    const player = this.getPlayerSymbol(client.sessionId);
+  protected handleAction(client: Client, action: ActionMessage) {
+    const player = this.getPlayerMark(client.sessionId);
     if (!player) {
-      client.send('error', { message: 'You are not a player in this match' });
+      this.sendError(client, 'You are not a player in this match');
       return;
     }
 
-    const result = applyAction(this.gameState, player, action);
+    const result = applyAction(this.gameState, player, action as Parameters<typeof applyAction>[2]);
 
     if (!result.ok) {
-      client.send('error', { message: result.error });
+      this.sendError(client, result.error);
       logger.warn({ roomId: this.roomId, player, action, error: result.error }, 'Rejected action');
       return;
     }
@@ -81,19 +46,38 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
     if (this.gameState.phase === 'finished') this.onMatchFinished();
   }
 
-  private assignSlot(sessionId: string): Player | null {
-    if (this.gameState.players.X === null) {
-      this.gameState.players.X = sessionId;
-      return 'X';
+  // -------------------------------------------------------------------------
+  // Lifecycle overrides
+  // -------------------------------------------------------------------------
+
+  onJoin(client: Client) {
+    const mark = this.assignMark(client.sessionId);
+    if (!mark) {
+      client.leave();
+      return;
     }
-    if (this.gameState.players.O === null) {
-      this.gameState.players.O = sessionId;
-      return 'O';
+
+    const bothSeated = this.gameState.players.X !== null && this.gameState.players.O !== null;
+    if (bothSeated) {
+      this.lock();
+      this.gameState.phase = 'active';
+      logger.info({ roomId: this.roomId }, 'Match started');
     }
+
+    super.onJoin(client); // logs + broadcastState
+  }
+
+  // -------------------------------------------------------------------------
+  // Private helpers
+  // -------------------------------------------------------------------------
+
+  private assignMark(sessionId: string): 'X' | 'O' | null {
+    if (this.gameState.players.X === null) { this.gameState.players.X = sessionId; return 'X'; }
+    if (this.gameState.players.O === null) { this.gameState.players.O = sessionId; return 'O'; }
     return null;
   }
 
-  private getPlayerSymbol(sessionId: string): Player | null {
+  private getPlayerMark(sessionId: string): 'X' | 'O' | null {
     if (this.gameState.players.X === sessionId) return 'X';
     if (this.gameState.players.O === sessionId) return 'O';
     return null;

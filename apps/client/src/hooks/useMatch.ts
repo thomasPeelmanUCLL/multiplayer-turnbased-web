@@ -1,116 +1,83 @@
+/**
+ * useMatch — connects to a Colyseus room and returns typed game state.
+ *
+ * Usage:
+ *   const { room, state, status } = useMatch('tictactoe', matchId);
+ *   room?.send('action', { type: 'place_mark', cell: 4 });
+ *
+ * Adding a new game:
+ *   Just call useMatch('poker', matchId) — the hook is game-agnostic.
+ *   Define your state shape as TState and pass it as the generic.
+ */
 import { useEffect, useRef, useState, useCallback } from 'react';
+import * as Colyseus from 'colyseus.js';
 
-const WS_URL = (import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567') + '/game';
+const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-// ---------------------------------------------------------------------------
-// Types (mirror protocol.ts on the server)
-// ---------------------------------------------------------------------------
+export type ConnectionStatus = 'connecting' | 'joined' | 'error' | 'left';
 
-type Cell = 'X' | 'O' | null;
-type MatchPhase = 'waiting' | 'active' | 'finished';
-type Player = 'X' | 'O';
-
-export interface MatchState {
-  roomId:        string;
-  sessionId:     string;
-  board:         Cell[];
-  phase:         MatchPhase;
-  currentPlayer: Player;
-  winner:        Player | 'draw' | null;
-  playerX:       string | null;
-  playerO:       string | null;
+export interface UseMatchReturn<TState> {
+  room:   Colyseus.Room | null;
+  state:  TState | null;
+  status: ConnectionStatus;
+  send:   (action: object) => void;
 }
 
-export type ConnectionStatus = 'connecting' | 'open' | 'closed' | 'error';
+export function useMatch<TState = Record<string, unknown>>(
+  gameType: string,
+  roomId?: string,
+): UseMatchReturn<TState> {
+  const clientRef = useRef<Colyseus.Client | null>(null);
+  const roomRef   = useRef<Colyseus.Room | null>(null);
 
-export interface UseMatchReturn {
-  state:   MatchState | null;
-  status:  ConnectionStatus;
-  logs:    string[];
-  placeMark: (cell: number) => void;
-  resign:    () => void;
-}
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
-export function useMatch(roomId: string | undefined): UseMatchReturn {
-  const wsRef    = useRef<WebSocket | null>(null);
-  const [state,  setState]  = useState<MatchState | null>(null);
+  const [room,   setRoom]   = useState<Colyseus.Room | null>(null);
+  const [state,  setState]  = useState<TState | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
-  const [logs,   setLogs]   = useState<string[]>([]);
-
-  function log(msg: string) {
-    console.log('[useMatch]', msg);
-    setLogs(prev => [...prev.slice(-29), msg]);
-  }
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    const client = new Colyseus.Client(WS_URL);
+    clientRef.current = client;
 
-    ws.onopen = () => {
-      setStatus('open');
-      log('connected');
-      // Send join immediately
-      const payload = roomId && roomId !== 'new' ? { roomId } : {};
-      ws.send(JSON.stringify({ type: 'join', payload }));
-      log(`sent join roomId=${roomId ?? '(any)'}`);
-    };
-
-    ws.onmessage = (ev) => {
-      let msg: { type: string; payload: unknown };
+    async function connect() {
       try {
-        msg = JSON.parse(ev.data as string);
-      } catch {
-        log('invalid JSON from server');
-        return;
+        const r = roomId && roomId !== 'new'
+          ? await client.joinById(roomId)
+          : await client.joinOrCreate(gameType);
+
+        roomRef.current = r;
+        setRoom(r);
+        setStatus('joined');
+
+        r.onMessage('state', (payload: TState) => {
+          setState(payload);
+        });
+
+        r.onMessage('error', (payload: { message: string }) => {
+          console.error('[useMatch] server error:', payload.message);
+        });
+
+        r.onLeave(() => {
+          setStatus('left');
+          setRoom(null);
+        });
+      } catch (err) {
+        console.error('[useMatch] connection failed:', err);
+        setStatus('error');
       }
+    }
 
-      if (msg.type === 'state') {
-        const s = msg.payload as MatchState;
-        log(`phase=${s.phase} turn=${s.currentPlayer} board=${JSON.stringify(s.board)}`);
-        setState(s);
-      } else if (msg.type === 'error') {
-        const e = msg.payload as { message: string };
-        log(`server error: ${e.message}`);
-      } else {
-        log(`unknown msg type: ${msg.type}`);
-      }
-    };
-
-    ws.onerror = () => {
-      setStatus('error');
-      log('WebSocket error');
-    };
-
-    ws.onclose = (ev) => {
-      setStatus('closed');
-      log(`closed code=${ev.code}`);
-    };
+    void connect();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      roomRef.current?.leave();
+      roomRef.current = null;
+      clientRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = useCallback((msg: object) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    }
+  const send = useCallback((action: object) => {
+    roomRef.current?.send('action', action);
   }, []);
 
-  const placeMark = useCallback((cell: number) => {
-    log(`sending place_mark cell=${cell}`);
-    send({ type: 'action', payload: { type: 'place_mark', cell } });
-  }, [send]);
-
-  const resign = useCallback(() => {
-    log('sending resign');
-    send({ type: 'action', payload: { type: 'resign' } });
-  }, [send]);
-
-  return { state, status, logs, placeMark, resign };
+  return { room, state, status, send };
 }

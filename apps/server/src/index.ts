@@ -5,16 +5,17 @@ import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { WebSocketServer } from 'ws';
+import * as colyseus from 'colyseus';
+import { WebSocketTransport } from '@colyseus/ws-transport';
 
 import { env } from './config/env.js';
 import { pool } from './db/client.js';
 import { authRouter } from './routes/auth.js';
 import { matchRouter } from './routes/matches.js';
 import { userRouter } from './routes/users.js';
+import { TicTacToeRoom } from './rooms/TicTacToeRoom.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimiters } from './middleware/rateLimiters.js';
-import { RoomManager } from './ws/RoomManager.js';
 import { logger } from './lib/logger.js';
 
 const app = express();
@@ -32,11 +33,20 @@ app.use('/users',   userRouter);
 
 app.use(errorHandler);
 
-// WebSocket game server — mounted at /game
-const wss = new WebSocketServer({ server: httpServer, path: '/game' });
-const rooms = new RoomManager();
-wss.on('connection', (socket) => rooms.handleConnection(socket));
-logger.info('WebSocket server mounted at /game');
+const gameServer = new colyseus.Server({
+  transport: new WebSocketTransport({ server: httpServer }),
+});
+
+/**
+ * Register game rooms here as you add new games.
+ * Each room type gets its own path — the client connects to e.g. /tictactoe.
+ *
+ * enableRealtimeListing() lets joinOrCreate() find rooms created milliseconds
+ * ago, preventing the race where two players each spin up their own room.
+ */
+gameServer.define('tictactoe', TicTacToeRoom).enableRealtimeListing();
+// gameServer.define('poker',     PokerRoom).enableRealtimeListing();
+// gameServer.define('uno',       UnoRoom).enableRealtimeListing();
 
 httpServer.listen(env.PORT, () => {
   logger.info(`listening on http://0.0.0.0:${env.PORT}`);

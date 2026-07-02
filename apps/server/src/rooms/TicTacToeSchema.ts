@@ -1,13 +1,12 @@
-import { Schema, type, ArraySchema } from '@colyseus/schema';
-
-export class TicTacToeSchema extends Schema {
-  @type(['string']) board = new ArraySchema<string>(
-    '', '', '', '', '', '', '', '', ''
-  );
-  @type('string') phase: string = 'waiting';
-  @type('string') currentPlayer: string = 'X';
-  @type('string') winner: string = '';
-  // Flat strings instead of nested Schema — avoids v0.15 nested patch issues
-  @type('string') playerX: string = '';
-  @type('string') playerO: string = '';
-}
+/**
+ * TicTacToeSchema is intentionally empty.
+ *
+ * We do NOT use @colyseus/schema's binary state sync — it caused ArraySchema
+ * mutation bugs and adds complexity with zero benefit for a turn-based game.
+ *
+ * Instead, BaseRoom.broadcastState() sends plain JSON via this.broadcast('state', ...).
+ * This file exists only to satisfy the colyseus.Room<T> generic; it is never
+ * serialized or sent to clients.
+ */
+import { Schema } from '@colyseus/schema';
+export class TicTacToeSchema extends Schema {}
