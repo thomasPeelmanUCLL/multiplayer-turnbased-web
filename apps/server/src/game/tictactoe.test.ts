@@ -62,14 +62,14 @@ describe("applyAction — place_mark", () => {
     expect(result.newState.winner).toBe("X");
   });
 
-  it("detects a draw", () => {
-    // Board one move from a full draw: X to play at cell 8
+    it("detects a draw", () => {
+    // Board one move from a full draw: X to play at cell 7
     //  X | O | X
-    //  O | X | O
-    //  O | X | _
-    const board = ["X", "O", "X", "O", "X", "O", "O", "X", null] as TicTacToeState["board"];
+    //  X | O | O
+    //  O | _ | X
+    const board = ["X", "O", "X", "X", "O", "O", "O", null, "X"] as TicTacToeState["board"];
     const state = activeState({ board });
-    const result = applyAction(state, "X", { type: "place_mark", cell: 8 });
+    const result = applyAction(state, "X", { type: "place_mark", cell: 7 });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.newState.phase).toBe("finished");
