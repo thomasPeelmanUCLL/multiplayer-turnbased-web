@@ -1,21 +1,19 @@
 /**
- * Match page — tic-tac-toe board.
+ * Match page — owns the full Colyseus lifecycle.
  *
- * Reads the live Room from RoomContext (set by LobbyPage).
- * Falls back to joinById for direct URL access / page refresh.
+ * Route "/match/new"      → joinOrCreate (lobby matchmaking)
+ * Route "/match/:roomId" → joinById     (direct link / refresh)
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Client as ColyseusClient, type Room } from 'colyseus.js';
 import type { TicTacToeState, Player } from '@repo/shared';
-import { useRoomContext } from '../context/RoomContext.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
 export function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate    = useNavigate();
-  const { getRoom, setRoom } = useRoomContext();
 
   const roomRef = useRef<Room<TicTacToeState> | null>(null);
 
@@ -24,64 +22,65 @@ export function MatchPage() {
   const [error,     setError]     = useState<string | null>(null);
 
   useEffect(() => {
-    if (!matchId) return;
+    const client = new ColyseusClient(WS_URL);
+    let cancelled = false;
 
     function attachHandlers(room: Room<TicTacToeState>) {
+      if (cancelled) { room.leave(); return; }
       roomRef.current = room;
       setSessionId(room.sessionId);
+
+      // Replace /match/new with the real room ID in the URL
+      if (matchId === 'new') {
+        navigate(`/match/${room.roomId}`, { replace: true });
+      }
+
       room.onStateChange((snapshot) =>
         setState({ ...snapshot } as unknown as TicTacToeState),
       );
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
-      room.onLeave(() => {
-        roomRef.current = null;
-        setRoom(null);
-      });
+      room.onLeave(() => { roomRef.current = null; });
     }
 
-    const existing = getRoom();
-    if (existing) {
-      attachHandlers(existing);
-    } else {
-      // Deep-link or refresh — rejoin by ID
-      new ColyseusClient(WS_URL)
+    if (matchId === 'new') {
+      client
+        .joinOrCreate<TicTacToeState>('tictactoe')
+        .then(attachHandlers)
+        .catch((err: unknown) =>
+          setError(err instanceof Error ? err.message : 'Failed to connect'),
+        );
+    } else if (matchId) {
+      client
         .joinById<TicTacToeState>(matchId)
-        .then((room) => {
-          setRoom(room);
-          attachHandlers(room);
-        })
+        .then(attachHandlers)
         .catch((err: unknown) =>
           setError(err instanceof Error ? err.message : 'Failed to connect'),
         );
     }
 
     return () => {
-      // Only leave if we're truly unmounting (navigating away from match)
+      cancelled = true;
       roomRef.current?.leave();
-      setRoom(null);
+      roomRef.current = null;
     };
-  }, [matchId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function place(position: number) {
     roomRef.current?.send('action', { type: 'place_mark', cell: position });
   }
 
-  if (error) {
-    return (
-      <main style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
-        <p style={{ color: 'red' }}>{error}</p>
-        <button onClick={() => navigate('/lobby')}>Back to lobby</button>
-      </main>
-    );
-  }
+  if (error) return (
+    <main style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
+      <p style={{ color: 'red' }}>{error}</p>
+      <button onClick={() => navigate('/lobby')}>Back to lobby</button>
+    </main>
+  );
 
-  if (!state || !sessionId) {
-    return (
-      <main style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
-        <p>Connecting…</p>
-      </main>
-    );
-  }
+  if (!state || !sessionId) return (
+    <main style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
+      <p>Connecting…</p>
+    </main>
+  );
 
   const myMark: Player | undefined =
     sessionId === state.players.X ? 'X' :
@@ -93,9 +92,7 @@ export function MatchPage() {
 
   return (
     <main style={{ maxWidth: 480, margin: '40px auto', padding: '0 16px' }}>
-      <header style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Tic-Tac-Toe</h1>
         <button onClick={() => navigate('/lobby')}>← Lobby</button>
       </header>
@@ -109,11 +106,7 @@ export function MatchPage() {
         )}
       </p>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 8, marginTop: 24, maxWidth: 300,
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 24, maxWidth: 300 }}>
         {state.board.map((cell, i) => (
           <button
             key={i}

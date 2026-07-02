@@ -1,33 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Client } from 'colyseus.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { useRoomContext } from '../context/RoomContext.js';
-import type { TicTacToeState } from '@repo/shared';
-
-const colyseusClient = new Client(
-  import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567',
-);
 
 export function LobbyPage() {
-  const navigate        = useNavigate();
+  const navigate = useNavigate();
   const { username, logout } = useAuth();
-  const { setRoom }     = useRoomContext();
-
-  const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleFindMatch() {
-    setError(null);
+  function handleFindMatch() {
     setLoading(true);
-    try {
-      const room = await colyseusClient.joinOrCreate<TicTacToeState>('tictactoe');
-      setRoom(room);                          // store in context — survives navigation
-      navigate(`/match/${room.roomId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect to server');
-      setLoading(false);
-    }
+    // MatchPage owns all Colyseus logic; we just route there.
+    // A unique ID in the URL lets MatchPage call joinOrCreate with a
+    // predictable room name so two players land in the same room.
+    navigate('/match/new');
   }
 
   return (
@@ -48,10 +33,8 @@ export function LobbyPage() {
         disabled={loading}
         style={{ padding: '10px 24px', fontSize: 16 }}
       >
-        {loading ? 'Finding match…' : 'Find match'}
+        {loading ? 'Connecting…' : 'Find match'}
       </button>
-
-      {error && <p style={{ color: 'red', marginTop: 16 }}>{error}</p>}
     </main>
   );
 }
