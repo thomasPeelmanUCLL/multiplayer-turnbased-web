@@ -4,18 +4,17 @@
 import * as colyseus from 'colyseus';
 import type { Client } from 'colyseus';
 
-import type { ClientAction, Player, TicTacToeState } from '@repo/shared';
-import { applyAction, createInitialState } from '../game/tictactoe.js';
+import type { ClientAction, Player } from '@repo/shared';
+import { applyAction } from '../game/tictactoe.js';
 import { saveMatchResult } from '../db/matches.js';
 import { logger } from '../lib/logger.js';
+import { TicTacToeSchema } from './TicTacToeSchema.js';
 
-export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
+export class TicTacToeRoom extends colyseus.Room<TicTacToeSchema> {
   maxClients = 2;
 
   onCreate() {
-    this.setState(createInitialState());
-
-    // Auto-dispose room if no one joins within 30 s
+    this.setState(new TicTacToeSchema());
     this.autoDispose = true;
 
     this.onMessage<ClientAction>('action', (client, action) => {
@@ -34,9 +33,7 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
 
     logger.info({ roomId: this.roomId, sessionId: client.sessionId, slot }, 'Player joined');
 
-    // Lock the room once both seats are filled so joinOrCreate
-    // never sends a third client here
-    const bothSeated = this.state.players.X && this.state.players.O;
+    const bothSeated = this.state.players.X !== '' && this.state.players.O !== '';
     if (bothSeated) {
       this.lock();
       this.state.phase = 'active';
@@ -59,18 +56,34 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
       return;
     }
 
-    const result = applyAction(this.state, player, action);
+    // Convert Schema state to plain object for pure game logic
+    const plainState = {
+      board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
+      phase: this.state.phase as any,
+      currentPlayer: this.state.currentPlayer as Player,
+      winner: this.state.winner === '' ? null : this.state.winner as any,
+      players: {
+        X: this.state.players.X === '' ? null : this.state.players.X,
+        O: this.state.players.O === '' ? null : this.state.players.O,
+      },
+    };
+
+    const result = applyAction(plainState, player, action);
 
     if (!result.ok) {
       client.send('error', { message: result.error });
-      logger.warn(
-        { roomId: this.roomId, player, action, error: result.error },
-        'Rejected action',
-      );
+      logger.warn({ roomId: this.roomId, player, action, error: result.error }, 'Rejected action');
       return;
     }
 
-    Object.assign(this.state, result.newState);
+    // Write result back into Schema
+    const s = result.newState;
+    for (let i = 0; i < 9; i++) {
+      this.state.board[i] = s.board[i] ?? '';
+    }
+    this.state.phase         = s.phase;
+    this.state.currentPlayer = s.currentPlayer;
+    this.state.winner        = s.winner ?? '';
 
     if (this.state.phase === 'finished') {
       this.onMatchFinished();
@@ -78,11 +91,11 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
   }
 
   private assignSlot(sessionId: string): Player | null {
-    if (!this.state.players.X) {
+    if (this.state.players.X === '') {
       this.state.players.X = sessionId;
       return 'X';
     }
-    if (!this.state.players.O) {
+    if (this.state.players.O === '') {
       this.state.players.O = sessionId;
       return 'O';
     }
@@ -96,11 +109,19 @@ export class TicTacToeRoom extends colyseus.Room<TicTacToeState> {
   }
 
   private onMatchFinished() {
-    logger.info(
-      { roomId: this.roomId, winner: this.state.winner },
-      'Match finished',
-    );
-    saveMatchResult(this.roomId, this.state).catch((err: unknown) => {
+    logger.info({ roomId: this.roomId, winner: this.state.winner }, 'Match finished');
+    // Build a plain state for DB persistence
+    const plainState = {
+      board: Array.from(this.state.board).map(c => c === '' ? null : c) as any,
+      phase: this.state.phase as any,
+      currentPlayer: this.state.currentPlayer as Player,
+      winner: this.state.winner === '' ? null : this.state.winner as any,
+      players: {
+        X: this.state.players.X || null,
+        O: this.state.players.O || null,
+      },
+    };
+    saveMatchResult(this.roomId, plainState).catch((err: unknown) => {
       logger.error({ roomId: this.roomId, err }, 'Failed to save match result');
     });
   }

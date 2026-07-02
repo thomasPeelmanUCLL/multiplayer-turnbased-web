@@ -1,23 +1,31 @@
 /**
- * Match page — owns the full Colyseus lifecycle.
+ * Match page — tic-tac-toe board.
  *
- * Route "/match/new"      → joinOrCreate (lobby matchmaking)
- * Route "/match/:roomId" → joinById     (direct link / refresh)
+ * State arrives as a Colyseus Schema patch — board cells are '' for empty,
+ * 'X' or 'O' when occupied. Players.X / Players.O hold sessionIds.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Client as ColyseusClient, type Room } from 'colyseus.js';
-import type { TicTacToeState, Player } from '@repo/shared';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
+
+// Mirror of TicTacToeSchema as plain types (what colyseus.js deserialises into)
+interface MatchState {
+  board: string[];          // '' | 'X' | 'O'
+  phase: string;            // 'waiting' | 'active' | 'finished'
+  currentPlayer: string;
+  winner: string;           // '' | 'X' | 'O' | 'draw'
+  players: { X: string; O: string };
+}
 
 export function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate    = useNavigate();
 
-  const roomRef = useRef<Room<TicTacToeState> | null>(null);
+  const roomRef = useRef<Room<MatchState> | null>(null);
 
-  const [state,     setState]     = useState<TicTacToeState | null>(null);
+  const [state,     setState]     = useState<MatchState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error,     setError]     = useState<string | null>(null);
 
@@ -25,48 +33,33 @@ export function MatchPage() {
     const client = new ColyseusClient(WS_URL);
     let cancelled = false;
 
-    function attachHandlers(room: Room<TicTacToeState>) {
+    function attachHandlers(room: Room<MatchState>) {
       if (cancelled) { room.leave(); return; }
       roomRef.current = room;
       setSessionId(room.sessionId);
 
-      // Replace /match/new with the real room ID in the URL
       if (matchId === 'new') {
         navigate(`/match/${room.roomId}`, { replace: true });
       }
 
-      room.onStateChange((snapshot) =>
-        setState({ ...snapshot } as unknown as TicTacToeState),
-      );
+      room.onStateChange((snapshot) => setState({ ...snapshot }));
       room.onError((code, msg) => setError(`Room error ${code}: ${msg}`));
       room.onLeave(() => { roomRef.current = null; });
     }
 
     if (matchId === 'new') {
-      client
-        .joinOrCreate<TicTacToeState>('tictactoe')
-        .then(attachHandlers)
-        .catch((err: unknown) =>
-          setError(err instanceof Error ? err.message : 'Failed to connect'),
-        );
+      client.joinOrCreate<MatchState>('tictactoe').then(attachHandlers)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to connect'));
     } else if (matchId) {
-      client
-        .joinById<TicTacToeState>(matchId)
-        .then(attachHandlers)
-        .catch((err: unknown) =>
-          setError(err instanceof Error ? err.message : 'Failed to connect'),
-        );
+      client.joinById<MatchState>(matchId).then(attachHandlers)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to connect'));
     }
 
-    return () => {
-      cancelled = true;
-      roomRef.current?.leave();
-      roomRef.current = null;
-    };
+    return () => { cancelled = true; roomRef.current?.leave(); roomRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function place(position: number) {
-    roomRef.current?.send('action', { type: 'place_mark', cell: position });
+  function place(i: number) {
+    roomRef.current?.send('action', { type: 'place_mark', cell: i });
   }
 
   if (error) return (
@@ -82,13 +75,11 @@ export function MatchPage() {
     </main>
   );
 
-  const myMark: Player | undefined =
-    sessionId === state.players.X ? 'X' :
-    sessionId === state.players.O ? 'O' : undefined;
+  const myMark = sessionId === state.players.X ? 'X'
+               : sessionId === state.players.O ? 'O'
+               : null;
 
-  const isMyTurn =
-    state.phase === 'active' && myMark !== undefined &&
-    state.currentPlayer === myMark;
+  const isMyTurn = state.phase === 'active' && myMark !== null && state.currentPlayer === myMark;
 
   return (
     <main style={{ maxWidth: 480, margin: '40px auto', padding: '0 16px' }}>
@@ -101,8 +92,9 @@ export function MatchPage() {
         {state.phase === 'waiting'  && '⏳ Waiting for opponent…'}
         {state.phase === 'active'   && (isMyTurn ? '🟢 Your turn' : '⏳ Opponent\'s turn')}
         {state.phase === 'finished' && (
-          state.winner === 'draw' ? '🤝 Draw!'
-            : state.winner === myMark ? '🎉 You won!' : '😔 You lost'
+          state.winner === 'draw'   ? '🤝 Draw!'
+          : state.winner === myMark ? '🎉 You won!'
+          : '😔 You lost'
         )}
       </p>
 
@@ -110,15 +102,15 @@ export function MatchPage() {
         {state.board.map((cell, i) => (
           <button
             key={i}
-            disabled={!isMyTurn || cell !== null}
+            disabled={!isMyTurn || cell !== ''}
             onClick={() => place(i)}
             style={{
               height: 90, fontSize: 40, fontWeight: 'bold',
               background: '#fff', border: '2px solid #ccc', borderRadius: 8,
-              cursor: isMyTurn && cell === null ? 'pointer' : 'default',
+              cursor: isMyTurn && cell === '' ? 'pointer' : 'default',
             }}
           >
-            {cell ?? ''}
+            {cell}
           </button>
         ))}
       </div>
