@@ -12,6 +12,7 @@
   },
   "pnpm": {
     "overrides": {
+      "@colyseus/core": "^0.16.0",
       "@colyseus/uwebsockets-transport": "npm:@colyseus/ws-transport@^0.16.5"
     }
   }
