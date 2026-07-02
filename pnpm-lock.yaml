@@ -55,7 +55,7 @@ importers:
   apps/server:
     dependencies:
       '@colyseus/core':
-        specifier: ^0.16.24
+        specifier: ^0.16.0
         version: 0.16.24(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
       '@colyseus/schema':
         specifier: ^3.0.76
