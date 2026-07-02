@@ -1,41 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Client as ColyseusClient, type Room } from 'colyseus.js';
+import { TicTacToeSchema } from '../schema/TicTacToeSchema.js';
 
 const WS_URL = import.meta.env.VITE_SERVER_WS_URL ?? 'ws://localhost:2567';
 
-interface MatchState {
-  board: string[];
-  phase: string;
-  currentPlayer: string;
-  winner: string;
-  players: { X: string; O: string };
-}
-
-function snapshot(room: Room<MatchState>): MatchState {
-  const s = room.state as any;
+function snapshot(state: TicTacToeSchema) {
   const board: string[] = [];
-  for (let i = 0; i < 9; i++) board.push(s.board?.[i] == null ? '' : String(s.board[i]));
-  const result = {
+  for (let i = 0; i < 9; i++) board.push(state.board[i] ?? '');
+  return {
     board,
-    phase:         String(s.phase         ?? 'waiting'),
-    currentPlayer: String(s.currentPlayer ?? 'X'),
-    winner:        String(s.winner        ?? ''),
+    phase:         state.phase         ?? 'waiting',
+    currentPlayer: state.currentPlayer ?? 'X',
+    winner:        state.winner        ?? '',
     players: {
-      X: String(s.players?.X ?? ''),
-      O: String(s.players?.O ?? ''),
+      X: state.players?.X ?? '',
+      O: state.players?.O ?? '',
     },
   };
-  return result;
 }
+
+type MatchState = ReturnType<typeof snapshot>;
 
 export function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate    = useNavigate();
 
-  const roomRef    = useRef<Room<MatchState> | null>(null);
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollCount  = useRef(0);
+  const roomRef   = useRef<Room<TicTacToeSchema> | null>(null);
+  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCount = useRef(0);
 
   const [state,     setState]     = useState<MatchState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -53,17 +46,15 @@ export function MatchPage() {
 
     log(`connecting to ${WS_URL}, matchId=${matchId}`);
 
-    function startPolling(room: Room<MatchState>) {
+    function startPolling(room: Room<TicTacToeSchema>) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(() => {
         pollCount.current += 1;
-        const s = room.state as any;
-        const snap = snapshot(room);
+        const s = room.state;
+        const snap = snapshot(s);
 
-        // Log raw state every 5 ticks so we can see what Colyseus actually has
         if (pollCount.current % 5 === 1) {
-          log(`poll#${pollCount.current} raw: phase=${s?.phase} players.X=${s?.players?.X} players.O=${s?.players?.O}`);
-          log(`poll#${pollCount.current} snap: phase=${snap.phase} X=${snap.players.X} O=${snap.players.O} me=${room.sessionId}`);
+          log(`poll#${pollCount.current} phase=${s?.phase} X=${s?.players?.X?.slice(0,6)} O=${s?.players?.O?.slice(0,6)}`);
         }
 
         setState(snap);
@@ -76,37 +67,29 @@ export function MatchPage() {
       }, 100);
     }
 
-    function attachHandlers(room: Room<MatchState>) {
+    function attachHandlers(room: Room<TicTacToeSchema>) {
       if (cancelled) { room.leave(); return; }
       roomRef.current = room;
       setSessionId(room.sessionId);
-      log(`joined room=${room.roomId} sessionId=${room.sessionId}`);
 
-      // Log raw state immediately after join
-      const s = room.state as any;
-      log(`state immediately after join: phase=${s?.phase} players.X=${s?.players?.X} players.O=${s?.players?.O}`);
+      log(`joined room=${room.roomId} sessionId=${room.sessionId}`);
+      log(`initial state: phase=${room.state?.phase} X=${room.state?.players?.X} O=${room.state?.players?.O}`);
 
       if (matchId === 'new') navigate(`/match/${room.roomId}`, { replace: true });
 
-      room.onStateChange((newState: any) => {
-        log(`onStateChange fired: phase=${newState?.phase} players.X=${newState?.players?.X} players.O=${newState?.players?.O}`);
-        setState(snapshot(room));
+      room.onStateChange((s) => {
+        log(`onStateChange: phase=${s.phase} X=${s.players?.X?.slice(0,6)} O=${s.players?.O?.slice(0,6)}`);
+        setState(snapshot(s));
       });
-      room.onError((code, msg) => {
-        log(`ERROR code=${code} msg=${msg}`);
-        setError(`Room error ${code}: ${msg}`);
-      });
-      room.onLeave((code) => {
-        log(`onLeave code=${code}`);
-        roomRef.current = null;
-      });
+      room.onError((code, msg) => { log(`ERROR ${code}: ${msg}`); setError(`${code}: ${msg}`); });
+      room.onLeave((code) => { log(`onLeave code=${code}`); roomRef.current = null; });
 
       startPolling(room);
     }
 
     const promise = matchId === 'new'
-      ? client.joinOrCreate<MatchState>('tictactoe')
-      : client.joinById<MatchState>(matchId!);
+      ? client.joinOrCreate<TicTacToeSchema>('tictactoe', {}, TicTacToeSchema)
+      : client.joinById<TicTacToeSchema>(matchId!, {}, TicTacToeSchema);
 
     promise.then(attachHandlers).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -123,7 +106,6 @@ export function MatchPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function place(i: number) {
-    log(`placing mark at cell ${i}`);
     roomRef.current?.send('action', { type: 'place_mark', cell: i });
   }
 
@@ -204,7 +186,8 @@ function DebugPanel({ log }: { log: string[] }) {
       fontFamily: 'monospace', fontSize: 11, borderRadius: 6,
       maxHeight: 220, overflowY: 'auto',
     }}>
-      {log.length === 0 ? <span style={{color:'#666'}}>no logs yet</span>
+      {log.length === 0
+        ? <span style={{ color: '#666' }}>no logs yet</span>
         : log.map((l, i) => <div key={i}>{l}</div>)}
     </div>
   );
