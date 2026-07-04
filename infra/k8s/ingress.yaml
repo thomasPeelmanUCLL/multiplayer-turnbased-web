@@ -20,12 +20,12 @@ metadata:
 spec:
   tls:
     - hosts:
-        - turnbased.example.com       # <-- update
-        - api.turnbased.example.com   # <-- update
+        - turnbased.euroclasstravel.com       # <-- update
+        - api.turnbased.euroclasstravel.com   # <-- update
       secretName: turnbased-tls
   rules:
     # Frontend
-    - host: turnbased.example.com     # <-- update
+    - host: turnbased.euroclasstravel.com     # <-- update
       http:
         paths:
           - path: /
@@ -36,7 +36,7 @@ spec:
                 port:
                   name: http
     # Backend — REST + WebSocket on the same host/port
-    - host: api.turnbased.example.com # <-- update
+    - host: api.turnbased.euroclasstravel.com # <-- update
       http:
         paths:
           - path: /
