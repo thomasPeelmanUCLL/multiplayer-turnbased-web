@@ -1,0 +1,125 @@
+# ── Docker Build & Push ───────────────────────────────────────────────────────
+# Builds multi-platform images for both client and server on every push to main
+# and on version tags (v*.*.*).  Images are pushed to GitHub Container Registry.
+#
+# Required repository secrets (Settings → Secrets → Actions):
+#   none — GITHUB_TOKEN is supplied automatically.
+#
+# Optional repository variables (Settings → Variables → Actions):
+#   IMAGE_REGISTRY  — defaults to ghcr.io
+#   IMAGE_ORG       — defaults to the repository owner (lowercase)
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  ORG: ${{ vars.IMAGE_ORG || github.repository_owner }}
+
+jobs:
+  # ── Server ──────────────────────────────────────────────────────────────────
+  build-server:
+    name: Build & push — server
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU  # needed for multi-platform builds
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (server)
+        id: meta-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/turnbased-server
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-server.outputs.tags }}
+          labels: ${{ steps.meta-server.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Client ──────────────────────────────────────────────────────────────────
+  build-client:
+    name: Build & push — client
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (client)
+        id: meta-client
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/turnbased-client
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push client image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/client/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-client.outputs.tags }}
+          labels: ${{ steps.meta-client.outputs.labels }}
+          # Pass build-time Vite env vars — override via repository variables
+          # so you can set the real production URLs without rebuilding.
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL || 'http://localhost:2567' }}
+            VITE_SERVER_WS_URL=${{ vars.VITE_SERVER_WS_URL || 'ws://localhost:2567' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

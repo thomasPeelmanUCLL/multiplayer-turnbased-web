@@ -1,0 +1,76 @@
+# ── CI — lint, typecheck, test ────────────────────────────────────────────────
+# Runs on every push and every pull-request targeting main.
+# Keeps the build fast by running all workspace packages in parallel.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Lint · Typecheck · Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: turnbased
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: valkey/valkey:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://dev:dev@localhost:5432/turnbased
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_dummy_access_secret_64_bytes_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      JWT_REFRESH_SECRET: ci_dummy_refresh_secret_64_bytes_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_DAYS: "7"
+      PORT: "2567"
+      FRONTEND_ORIGIN: http://localhost:5173
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @repo/shared build
+
+      - name: Typecheck (all packages)
+        run: pnpm -r typecheck
+
+      - name: Test (all packages)
+        run: pnpm -r test --reporter=verbose
