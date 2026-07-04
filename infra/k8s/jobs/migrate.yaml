@@ -1,0 +1,66 @@
+# Run DB migrations as a one-shot Job.
+# Re-apply (kubectl apply -f infra/k8s/jobs/migrate.yaml) whenever
+# you add new migration SQL files.
+#
+# The Job mounts the migrations directory from a ConfigMap.
+# Regenerate the ConfigMap from the local files with:
+#   kubectl create configmap db-migrations \
+#     --from-file=infra/migrations/ \
+#     --namespace=turnbased \
+#     --dry-run=client -o yaml | kubectl apply -f -
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: turnbased
+  labels:
+    app.kubernetes.io/name: db-migrate
+    app.kubernetes.io/component: migration
+spec:
+  ttlSecondsAfterFinished: 300  # auto-clean after 5 min
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U turnbased -d turnbased; do
+                echo 'Waiting for postgres...' && sleep 2
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: turnbased-secrets
+                  key: POSTGRES_PASSWORD
+      containers:
+        - name: migrate
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              for f in /migrations/*.sql; do
+                echo "Applying $f ..."
+                psql "$DATABASE_URL" -f "$f"
+              done
+              echo 'Migrations complete.'
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: turnbased-secrets
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: db-migrations

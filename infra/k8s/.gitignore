@@ -1,0 +1,2 @@
+# Prevent accidental commit of real secret values
+secrets.yaml

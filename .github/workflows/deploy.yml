@@ -1,0 +1,58 @@
+# ── Deploy ─────────────────────────────────────────────────────────────────────
+# After docker-build-push succeeds on main, this workflow patches the image tags
+# in the Kubernetes deployments to the exact sha- tag that was just built.
+#
+# Required repository secret:
+#   KUBECONFIG_B64  — base64-encoded kubeconfig with access to your cluster
+#                     e.g.: cat ~/.kube/config | base64 | tr -d '\n'
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Docker Build & Push"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Patch image tags & rollout
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve short SHA
+        id: sha
+        run: echo "short=$(echo '${{ github.event.workflow_run.head_sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo '${{ secrets.KUBECONFIG_B64 }}' | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Patch server image
+        run: |
+          kubectl set image deployment/server \
+            server=ghcr.io/${{ github.repository_owner }}/turnbased-server:sha-${{ steps.sha.outputs.short }} \
+            --namespace=turnbased
+
+      - name: Patch client image
+        run: |
+          kubectl set image deployment/client \
+            client=ghcr.io/${{ github.repository_owner }}/turnbased-client:sha-${{ steps.sha.outputs.short }} \
+            --namespace=turnbased
+
+      - name: Wait for rollout — server
+        run: kubectl rollout status deployment/server --namespace=turnbased --timeout=120s
+
+      - name: Wait for rollout — client
+        run: kubectl rollout status deployment/client --namespace=turnbased --timeout=120s
+
+      - name: Verify pods are healthy
+        run: kubectl get pods --namespace=turnbased -l 'app.kubernetes.io/name in (server,client)'
